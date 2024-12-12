@@ -184,10 +184,11 @@ function generateTitleScreen(hoverLine, scrollIncrement, selectLine) {
 	} else {
 		const playedGameBefore = hasStartedTheGame() || hasSolvedAtLeastOneSection()
 		const options = [];
-		options.push(playedGameBefore && !hasFinishedTheGame() ? MENUITEM_CONTINUE : MENUITEM_NEWGAME);
+		const hasContinue = state.metadata.no_continue_button ? false : (playedGameBefore && !hasFinishedTheGame());
+		options.push(hasContinue ? MENUITEM_CONTINUE : MENUITEM_NEWGAME);
 		if(state.metadata.level_select && (!state.metadata.continue_is_level_select || !playedGameBefore))
 			options.push(MENUITEM_LEVELSELECT);
-		if (playedGameBefore && !hasFinishedTheGame()) {
+		if (hasContinue) {
 			options.push(MENUITEM_NEWGAME);
 		}
 
