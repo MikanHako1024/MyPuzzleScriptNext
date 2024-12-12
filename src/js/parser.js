@@ -37,7 +37,7 @@ const reg_objmodi = /^(canvas|copy|flip|rot|scale|shift|text|translate):/i;
 const commandwords_table = ['cancel', 'checkpoint', 'restart', 'win', 'message', 'again', 'undo', 'nosave', 'quit', 'zoomscreen', 'flickscreen', 'smoothscreen', 
     'again_interval', 'realtime_interval', 'key_repeat_interval', 'noundo', 'norestart', 'background_color', 'text_color', 'goto', 'message_text_align', 'status', 'gosub', 
     'storage_set', 'storage_clear'];
-const commandargs_table = ['message', 'goto', 'status', 'gosub', 'log'];
+const commandargs_table = ['message', 'goto', 'status', 'gosub', 'log', 'storage_set', 'storage_clear'];
 const twiddleable_params = ['background_color', 'text_color', 'key_repeat_interval', 'realtime_interval', 'again_interval', 'flickscreen', 'zoomscreen', 'smoothscreen', 'noundo', 'norestart', 'message_text_align'];
 const soundverbs_directional = ['move', 'cantmove'];
 const soundverbs_other = [ 'create', 'destroy' ];
