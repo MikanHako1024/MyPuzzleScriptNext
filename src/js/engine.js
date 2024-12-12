@@ -490,16 +490,18 @@ function gotoLink() {
 	if (debugSwitch.includes('load')) console.log('gotoLink()', `stack:`, linkStack);
   	if (solving) return;
 	for (const position of playerPositions) {
-		const level = state.levels[curLevelNo];
+		const level = state.levels[curLevelNo]; // only in original level
 		const objids = level.getObjects(position);
 		for (const link of state.links // use the most recent visible link definition
 				.slice(0, level.linksTop)
 				.reverse()) {
 			if (objids.includes(link.object)) {
+				addUndoState(!!curLevelBak ? curLevelBak : backupLevel()); // save the state before changes
 				const linkEntry = { 
 					backup: backupLevel(), 		// will restore to this
 					backupTop: backups.length 	// will prune to this
 				};
+				restartTargetStack[linkStack.length] = restartTarget;
 				linkStack.push(linkEntry);
 				gotoLevel(link.targetNo);
 				return;
@@ -510,7 +512,11 @@ function gotoLink() {
 
 function returnLink() {
 	if (debugSwitch.includes('load')) console.log('returnLink()', `stack:`, linkStack);
+	if (state.metadata.stacked_checkpoint) {
+		restartTarget = restartTargetStack[linkStack.length - 1] || restartTarget;
+	}
 	const linkEntry = linkStack.pop();
+	restartTargetStack.length = linkStack.length;
 	const level = state.levels[linkEntry.backup.levelNo];
 	backups = backups.slice(0, linkEntry.backupTop);
 	if (verbose_logging)
@@ -951,6 +957,7 @@ function tryPlayCloseMessageSound(){
 
 var backups=[];
 var restartTarget;
+var restartTargetStack = [];
 
 // create backup of level data for undo, restart, etc
 function backupLevel() {
@@ -971,6 +978,7 @@ function level4Serialization() {
 		oldflickscreendat: oldflickscreendat.concat([]),
     	cameraPositionTarget: Object.assign({}, cameraPositionTarget),
 		levelNo: curLevelNo,
+		depth: linkStack.length,
 	};
 	return ret;
 }
@@ -981,6 +989,7 @@ function setGameState(_state, command, randomseed) {
 	if (debugSwitch.includes('load')) console.log(`setGameState(${command})`);  //todo:
 	oldflickscreendat = [];
 	linkStack = [];
+	restartTargetStack = [];
 	timer = 0;
 	autotick = 0;
 	winning = false;
@@ -1482,8 +1491,13 @@ function DoUndo(force,ignoreDuplicates, resetTween = true, resetAutoTick = true,
     restoreLevel(torestore, null, resetTween, resetAutoTick);
     backups = backups.splice(0,backups.length-1);
 	// look for undo across link
-	if (linkStack.length > 0 && linkStack.at(-1).backupTop == backups.length)
-	  linkStack.pop();
+	if (linkStack.length > 0 && linkStack.at(-1).backupTop > backups.length) { // todo : Need to confirm it's > or >=
+		if (state.metadata.stacked_checkpoint) {
+			restartTarget = restartTargetStack[linkStack.length - 1] || restartTarget;
+		}
+		linkStack.pop();
+		restartTargetStack.length = linkStack.length;
+	}
     if (! force || forceSFX) {
       tryPlayUndoSound();
     }
@@ -3192,6 +3206,8 @@ var dirNames = ['up', 'left', 'down', 'right', 'action', 'mouse', 'lclick', 'rcl
 
 var perfCounters = {};
 
+var curLevelBak = null;
+
 /* returns a bool indicating if anything changed */
 function processInput(dir,dontDoWin,dontModify,bak,coord) {
 	//console.log(`Process input (${dir},${dontDoWin},${dontModify},${bak},${coord}) cmds=${level.commandQueue}`)
@@ -3223,6 +3239,7 @@ function procInp(dir,dontDoWin,dontModify,bak,coord) {
 	if (bak==undefined) {
 		bak = backupLevel();
 	}
+	curLevelBak = bak; // backup the state before changes
   
 	// this looks dodgy, but playerPositions is not used and dir test always succeeds
   	playerPositions= [];
@@ -3788,6 +3805,7 @@ function nextLevel() {
   	ignoreNotJustPressedAction=true;
 	if (titleScreen && titleMode <= 1) {
 		linkStack = [];
+		restartTargetStack = [];
 		backups = [];
 		if(isContinueOptionSelected()) {
 			// continue
