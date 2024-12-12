@@ -108,6 +108,9 @@ function doSetupTitleScreenLevelContinue(){
 			if (storage_has(document.URL+"_sections")) {
 				solvedSections = JSON.parse(storage_get(document.URL + "_sections"));
 			}
+			if (storage_has(document.URL+"_extraData")) {
+				extraStorageMap = JSON.parse(storage_get(document.URL + "_extraData"));
+			}
 		}
     } catch(ex) {
     }
@@ -516,6 +519,32 @@ function returnLink() {
 	resetFlickDat();
 	canvasResize();	
 	clearInputHistory();
+}
+
+//var extraStorageMap = {};
+
+function saveExtraStorageMap() {
+	if(!!window.localStorage) {
+		storage_set(document.URL + "_extraData", JSON.stringify(extraStorageMap));
+	}
+}
+function loadExtraStorageMap() {
+	extraStorageMap = {};
+	if (storage_has(document.URL+"_extraData")) {
+			extraStorageMap = JSON.parse(storage_get(document.URL + "_extraData"));
+	}
+}
+
+function extraStorageSet(key) {
+	extraStorageMap[key] = true;
+	saveExtraStorageMap();
+}
+function extraStorageClear(key) {
+	delete extraStorageMap[key];
+	saveExtraStorageMap();
+}
+function extraStorageGet(key) {
+	return extraStorageMap[key];
 }
 
 let introState = {
@@ -1917,6 +1946,7 @@ function Rule(rule) {
     this.cellRowMasks_Movements = rule[10];
     this.isGlobal = rule[11];
     this.isOnce = rule[12];
+    this.ifStorage = rule[13];
 	this.ruleMask = this.cellRowMasks.reduce( (acc, m) => { acc.ior(m); return acc }, new BitVec(STRIDE_OBJ) );
 
 	/*I tried out doing a ruleMask_movements as well along the lines of the above,
@@ -2585,7 +2615,27 @@ Rule.prototype.applyAt = function(level,tuple,check,delta) {
 	}
 	}
 
-
+	// Check storage
+	//   If there is any STORAGE OBJECT at current position, apply rule
+	//     (todo: any in tuple, instead of any at current position)
+	//   otherwise not
+	// STORAGE OBJECT: object2 if in data else object1
+	if (this.ifStorage) {
+		let ok = false;
+		const position = tuple[0];
+		const objIds = level.getObjects(position);
+		for (const stor of state.storages) {
+			const targetObj = (stor.forLevel ? solvedSections.indexOf(stor.target) >= 0 : extraStorageMap[stor.target]) ? stor.object2 : stor.object1;
+			if (objIds.indexOf(targetObj) >= 0) {
+				ok = true;
+				break;
+			}
+		}
+		if (!ok) {
+			return false;
+		}
+	}
+	
     var result=false;
 	var anyellipses=false;
 	const cellIndexes = [];
@@ -2732,7 +2782,12 @@ Rule.prototype.queueCommands = function() {
 			consolePrintFromRule(`${command[1]}`, this, true);
 			continue;
 		} else if (curLevel.commandQueue.indexOf(command[0])>=0) {
-			continue;
+			if (command[0] == 'storage_set' || command[0] == 'storage_clear') {
+				// allow duplicates
+			}
+			else {
+				continue;
+			}
 		} else if (command[0] == 'gosub') {			// gosub is not queued
 			gosubTarget = command[1];
 			continue;
@@ -2753,6 +2808,12 @@ Rule.prototype.queueCommands = function() {
 		} else if (command[0] == 'status') {
 			statusText = command[1];
 		}		
+		else if (command[0] == 'storage_set') {
+			extraStorageSet(command[1]);
+		}
+		else if (command[0] == 'storage_clear') {
+			extraStorageClear(command[1]);
+		}
 
 		if (state.metadata.runtime_metadata_twiddling && twiddleable_params.includes(command[0])) {
 
@@ -3887,12 +3948,24 @@ function clearLocalStorage() {
 	curLevelNo = 0;
 	curlevelTarget = null;
 	solvedSections = [];
+	extraStorageMap = {};
 
 	try {
 		if (!!window.localStorage) {
 			storage_remove(document.URL);
 			storage_remove(document.URL+'_checkpoint');
 			storage_remove(document.URL+'_sections');
+			storage_remove(document.URL+'_extraData');
+		}
+	} catch(ex){ }
+}
+
+function clearExtraDataStorage() {
+	if (debugSwitch.includes('menu')) console.log(`clearExtraDataStorage`);
+		extraStorageMap = {};
+	try {
+		if (!!window.localStorage) {
+			storage_remove(document.URL+'_extraData');
 		}
 	} catch(ex){ }
 }

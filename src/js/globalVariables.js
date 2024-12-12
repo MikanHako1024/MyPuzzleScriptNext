@@ -8,6 +8,8 @@ var muted=0;
 var runrulesonlevelstart_phase=false;
 var ignoreNotJustPressedAction=true;
 
+var extraStorageMap = {};
+
 var verbose_logging=false;
 var throttle_movement=false;
 var cache_console_messages=false;

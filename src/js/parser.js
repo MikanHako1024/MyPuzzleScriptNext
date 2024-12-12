@@ -28,14 +28,15 @@ let errorCount = 0;         //only counts errors
 let caseSensitive = false;
 
 // used here and in compiler
-const reg_commandwords = /^(afx[\w:=+-.]+|sfx\d+|cancel|checkpoint|restart|win|message|again|undo|nosave|quit|zoomscreen|flickscreen|smoothscreen|again_interval|realtime_interval|key_repeat_interval|noundo|norestart|background_color|text_color|goto|message_text_align|status|gosub|link|log)$/i;
+const reg_commandwords = /^(afx[\w:=+-.]+|sfx\d+|cancel|checkpoint|restart|win|message|again|undo|nosave|quit|zoomscreen|flickscreen|smoothscreen|again_interval|realtime_interval|key_repeat_interval|noundo|norestart|background_color|text_color|goto|message_text_align|status|gosub|link|log|storage_set|storage_clear)$/i;
 const reg_name = /^[\p{L}\p{N}_$]+/u;
 const reg_objectname = /^[\p{L}\p{N}_$]+(:[\p{L}\p{N}_$]+)*/u;              // object name for definition
 const reg_objectnamerel = /^[\p{L}\p{N}_$]+(:[<>v^]|:[\p{L}\p{N}_$]+)*$/u;  // object name with relative parts for use in rules
 const reg_objmodi = /^(canvas|copy|flip|rot|scale|shift|text|translate):/i;
 
 const commandwords_table = ['cancel', 'checkpoint', 'restart', 'win', 'message', 'again', 'undo', 'nosave', 'quit', 'zoomscreen', 'flickscreen', 'smoothscreen', 
-    'again_interval', 'realtime_interval', 'key_repeat_interval', 'noundo', 'norestart', 'background_color', 'text_color', 'goto', 'message_text_align', 'status', 'gosub'];
+    'again_interval', 'realtime_interval', 'key_repeat_interval', 'noundo', 'norestart', 'background_color', 'text_color', 'goto', 'message_text_align', 'status', 'gosub', 
+    'storage_set', 'storage_clear'];
 const commandargs_table = ['message', 'goto', 'status', 'gosub', 'log'];
 const twiddleable_params = ['background_color', 'text_color', 'key_repeat_interval', 'realtime_interval', 'again_interval', 'flickscreen', 'zoomscreen', 'smoothscreen', 'noundo', 'norestart', 'message_text_align'];
 const soundverbs_directional = ['move', 'cantmove'];
@@ -199,11 +200,11 @@ var codeMirrorFn = function() {
     const reg_soundevents = /^(sfx\d+|undo|restart|titlescreen|startgame|cancel|endgame|startlevel|endlevel|showmessage|closemessage|pausescreen)\b/i;
 
     const reg_loopmarker = /^(startloop|endloop)$/;
-    const reg_ruledirectionindicators = /^(up|down|left|right|horizontal|vertical|orthogonal|late|rigid)$/;
+    const reg_ruledirectionindicators = /^(up|down|left|right|horizontal|vertical|orthogonal|late|rigid|ifstorage)$/;
     const reg_sounddirectionindicators = /^(up|down|left|right|horizontal|vertical|orthogonal)\b/i;
 
     const keyword_array = [ 'checkpoint', 'objects', 'collisionlayers', 'legend', 'sounds', 'rules', 'winconditions', 'levels',
-        '|', '[', ']', 'up', 'down', 'left', 'right', 'late', 'rigid', '^', 'v', '>', '<', 'no', 'randomdir', 'random', 'horizontal', 'vertical',
+        '|', '[', ']', 'up', 'down', 'left', 'right', 'late', 'rigid', 'ifstorage', '^', 'v', '>', '<', 'no', 'randomdir', 'random', 'horizontal', 'vertical',
         'any', 'all', 'no', 'some', 'moving', 'stationary', 'parallel', 'perpendicular', 'action', 'message', 'move', 
         'create', 'destroy', 'cantmove', 'sfx0', 'sfx1', 'sfx2', 'sfx3', 'Sfx4', 'sfx5', 'sfx6', 'sfx7', 'sfx8', 'sfx9', 'sfx10', 
         'cancel', 'checkpoint', 'restart', 'win', 'message', 'again', 'undo', 'restart', 'titlescreen', 'startgame', 'cancel', 'endgame', 
@@ -1743,7 +1744,7 @@ var codeMirrorFn = function() {
         function getTokens() {
             let token
             // start of parse
-            if (token = lexer.match(/^(goto|level|link|message|section|title)/i, true)) { // allow omision of whitespace (with no warning!)
+            if (token = lexer.match(/^(goto|level|link|message|section|title|storage)/i, true)) { // allow omision of whitespace (with no warning!)
                 symbols.start = token;
                 lexer.pushToken(token, `${errorCase(token)}_VERB`);
 
@@ -1761,6 +1762,26 @@ var codeMirrorFn = function() {
                             lexer.pushToken(token, 'NAME');
                         }
                     }
+                }
+                else if (token == 'storage') {
+                    // e.g. storage obj1 obj2 name
+                    const storageObjects = [];
+                    for (let i = 0; i < 2; i++) {
+                        if (!(token = lexer.match(reg_objectname, !state.case_sensitive)))
+                            logError(`STORAGE needs an object to know where to put the storage.`, state.lineNumber);
+                        else if (!wordAlreadyDeclared(state, token))
+                            logError(`STORAGE object "${errorCase(token)}" not found, it needs to be already defined.`, state.lineNumber);
+                        else {
+                            const objects = expandSymbol(state, token, false, () => {});
+                            if (!(objects && objects.length == 1))
+                                logError(`STORAGE object "${errorCase(token)}" only works with a simple object or an alias, not something created with AND or OR.`, state.lineNumber);
+                            {
+                                storageObjects.push(objects[0]);
+                                lexer.pushToken(token, 'NAME');
+                            }
+                        }
+                    }
+                    symbols.storage = storageObjects;
                 }
                 symbols.text = lexer.matchAll();
                 if (symbols.text.length > 0)
@@ -1792,9 +1813,9 @@ var codeMirrorFn = function() {
                 state.levels.pop();
                 toplevel = null;
             }
-            const cmds = [ 'goto', 'level', 'link', 'message', 'section', 'title', ];
+            const cmds = [ 'goto', 'level', 'link', 'message', 'section', 'title', 'storage', ];
             if (cmds.includes(symbols.start))
-                state.levels.push([ symbols.start, symbols.text, state.lineNumber, symbols.link ]);
+                state.levels.push([ symbols.start, symbols.text, state.lineNumber, symbols.link, symbols.storage ]);
             else {
                 if (toplevel == null || cmds.includes(toplevel[0]))
                     state.levels.push([ state.lineNumber, null, symbols.gridline ]);

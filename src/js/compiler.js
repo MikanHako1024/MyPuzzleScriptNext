@@ -971,6 +971,7 @@ function levelsToArray(state) {
 	const levels = [];
     const links = [];
     //const links = {};
+    const storages = [];
     //const targets = new Set();
     let section, title, description, gotoFlag;
     
@@ -1014,6 +1015,13 @@ function levelsToArray(state) {
 				lineNumber: level[2],
                 object: level[3]
             });
+        } else if (level[0] == 'storage') {
+            storages.push({
+                target: level[1],
+                lineNumber: level[2],
+                object1: level[4][0],
+                object2: level[4][1],
+            });
 		} else {
             if (gotoFlag && links.length == 0) 
                 logWarning('Level unreachable due to previous GOTO.', level[0]);
@@ -1036,8 +1044,25 @@ function levelsToArray(state) {
             link.targetNo = -9999;
         }
     });
+    storages.forEach(storage => {
+        let index = -9999;
+        if ((index = levels.findIndex(level => storage.target == level.section)) != -1) {
+            storage.targetNo = index;
+            storage.forLevel = true;
+        }
+        else if ((index = levels.findIndex(level => storage.target == level.title)) != -1) {
+            storage.targetNo = -1-index;
+            storage.forLevel = true;
+        }
+        else {
+            //logError(`Sorry, storage target "${storage.target.toUpperCase()}" does not seem to be the name of any level.`, storage.lineNumber);
+            storage.targetNo = -9999;
+            storage.forLevel = false;
+        }
+    });
 	state.levels = levels;
 	state.links = links;
+    state.storages = storages;
 }
 
 function extractSections(state) {
@@ -1235,6 +1260,7 @@ function processRuleString(rule, state, curRules) {
     var globalRule = false;
     let isOnce = false;
     const prefixes = [];
+    var ifStorage = false;
 
     if (tokens.length===1) {
         if (tokens[0]==="startloop" ) {
@@ -1308,6 +1334,8 @@ function processRuleString(rule, state, curRules) {
                         }
                         parsestate = 1;
                         i--;
+                    } else if (token == 'ifstorage') {
+                        ifStorage = true;
                     } else {
                         logError("The start of a rule must consist of some number of directions (possibly 0), before the first bracket, specifying in what directions to look (with no direction specified, it applies in all four directions).  It seems you've just entered \"" + token.toUpperCase() + '\".', lineNumber);
                     }
@@ -1471,6 +1499,7 @@ var rule_line = {
     globalRule: globalRule,
     isOnce: isOnce,
     prefixes: prefixes,
+    ifStorage: ifStorage,
 };
 
     if (directionalRule(rule_line) === false && rule_line.directions.length>1) {
@@ -1500,6 +1529,7 @@ function deepCloneRule(rule, fnlhs, fnrhs) {
 		randomRule:rule.randomRule,
 		globalRule:rule.globalRule,
         isOnce: rule.isOnce,
+        ifStorage: rule.ifStorage,
 	};
 }
 
@@ -2706,6 +2736,7 @@ function collapseRules(groups) {
             newrule.push(cellRowMasks_Movements(newrule));
             newrule.push(oldrule.globalRule);
             newrule.push(oldrule.isOnce);
+            newrule.push(oldrule.ifStorage);
             rules[i] = new Rule(newrule);
         }
     }
@@ -3251,6 +3282,9 @@ function cacheRuleStringRep(rule) {
 	if (rule.late) {
 		result = "LATE "+result+" ";
 	}
+    if (rule.ifStorage) {
+        result = "IFSTORAGE "+result+" ";
+    }
 	for (var i=0;i<rule.lhs.length;i++) {
 		var cellRow = rule.lhs[i];
 		result = result + printCellRow(cellRow);
