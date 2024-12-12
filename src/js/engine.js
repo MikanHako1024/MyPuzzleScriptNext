@@ -1041,6 +1041,10 @@ function setGameState(_state, command, randomseed) {
     switch(command[0]){
     	case "restart":
     	{
+			if (state.metadata.clear_extra_storage_on_restart) {
+				clearExtraDataStorage();
+			}
+				
 		    winning=false;
 		    timer=0;
 		    titleScreen=true;
@@ -3795,6 +3799,9 @@ function nextLevel() {
 
 			if (state.metadata.level_select === undefined) {
 				clearLocalStorage();
+			}
+			else if (state.metadata.clear_extra_storage_on_new_game) {
+				clearExtraDataStorage();
 			}
 
 			loadLevelFromStateOrTarget();
