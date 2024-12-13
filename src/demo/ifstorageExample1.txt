@@ -1,0 +1,166 @@
+title StorageExample1
+author Mikan
+
+run_rules_on_level_start
+
+level_select
+level_select_solve_symbol *
+
+========
+OBJECTS
+========
+
+Background
+lightgreen green
+11111
+01111
+11101
+11111
+10111
+
+Wall
+brown darkbrown
+00010
+11111
+01000
+11111
+00010
+
+Target
+darkblue
+.....
+.000.
+.0.0.
+.000.
+.....
+
+Crate
+orange
+00000
+0...0
+0...0
+0...0
+00000
+
+Player
+black orange white blue
+.000.
+.111.
+22222
+.333.
+.3.3.
+
+false
+transparent
+
+Check_SaveCrate1
+transparent
+Check_SaveCrate2
+transparent
+
+================
+COLLISIONLAYERS
+================
+
+Background
+Target
+Wall
+Crate
+Player
+
+false
+
+Check_SaveCrate1
+Check_SaveCrate2
+
+=======
+LEGEND
+=======
+
+. = Background
+# = Wall
+P = Player
+C = Crate
+T = Target
+
+2 = Check_SaveCrate2
+
+=======
+SOUNDS
+=======
+
+======
+RULES
+======
+
+(store a crate)
+(set 'SaveCrate1' to 'true' in storage, the fact is {SaveCrate1:true})
+[ action Player | Crate ] -> [ Player | ] storage_set SaveCrate1
+
+(restore a crate)
+[ action Player ] -> [ Player Check_SaveCrate1 ]
+(if 'SaveCrate1' in storage, create a crate and clear 'SaveCrate1')
+right ifstorage [ Check_SaveCrate1 | no Crate ] -> [ | Crate ] storage_clear SaveCrate1
+[ Check_SaveCrate1 ] -> [ ]
+
+(restore crate for level 3)
+ifstorage [ Check_SaveCrate2 ] -> [ Crate ]
+[ Check_SaveCrate2 ] -> [ ]
+
+(movement)
+[ > Player | Crate ] -> [ > Player | > Crate ]
+
+==============
+WINCONDITIONS
+==============
+
+all Target on Crate
+
+=======
+LEVELS
+=======
+
+storage false Check_SaveCrate1 SaveCrate1
+storage false Check_SaveCrate2 Level4
+
+(delete localStorage[document.URL + '_sections'])
+(delete localStorage[document.URL + '_extraData'])
+
+section Level1
+###########
+#.........#
+#..P.C.T..#
+#.........#
+###########
+(you store crate in Level1)
+
+section Level2
+#######
+#.....#
+#.P...#
+#.....#
+#...T.#
+#.....#
+#######
+(you need restore crate in Level2)
+
+section Level3
+#######
+#.....#
+#.P.T.#
+#..2..#
+#.T..##
+#...###
+#######
+(you need solve Level4)
+
+section Level4
+#######
+#.....#
+#..P..#
+#.....#
+#.....#
+#.....#
+#..T..#
+#.....#
+#######
