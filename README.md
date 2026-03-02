@@ -22,16 +22,15 @@ Feel free to:
 * email me directly (david@polyomino.com).
 
 ## New Features and Fixes
-The latest version is Release v-12h25. 
+The latest version is Release v-26c02. 
+This release updates `stable`.
 
-Recent fixes/updates:
+Previous fixes/updates:
 * Level restored on startup triggers a crash #183
 * Fix: ESC+replay does not restore state cleanly #181
 * Fix: Objects misplaced after Restart #180
 * Fix: mouse support broken on dev-release #179
 * Testing framework enable compile error check for non-PS
-
-Older fixes/updates:
 * Custom palette #128
 * Set palette at runtime via metadata twiddling #95
 * Updated documentation (`Prelude` and `Runtime Metadata Twiddling`)
