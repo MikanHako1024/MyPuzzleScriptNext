@@ -498,6 +498,8 @@ var muted=0;
 var runrulesonlevelstart_phase=false;
 var ignoreNotJustPressedAction=true;
 
+var extraStorageMap = {};
+
 var verbose_logging=false;
 var throttle_movement=false;
 var cache_console_messages=false;
@@ -8151,6 +8153,9 @@ function doSetupTitleScreenLevelContinue(){
 			if (storage_has(document.URL+"_sections")) {
 				solvedSections = JSON.parse(storage_get(document.URL + "_sections"));
 			}
+			if (storage_has(document.URL+"_extraData")) {
+				extraStorageMap = JSON.parse(storage_get(document.URL + "_extraData"));
+			}
 		}
     } catch(ex) {
     }
@@ -8224,10 +8229,11 @@ function generateTitleScreen(hoverLine, scrollIncrement, selectLine) {
 	} else {
 		const playedGameBefore = hasStartedTheGame() || hasSolvedAtLeastOneSection()
 		const options = [];
-		options.push(playedGameBefore && !hasFinishedTheGame() ? MENUITEM_CONTINUE : MENUITEM_NEWGAME);
+		const hasContinue = state.metadata.no_continue_button ? false : (playedGameBefore && !hasFinishedTheGame());
+		options.push(hasContinue ? MENUITEM_CONTINUE : MENUITEM_NEWGAME);
 		if(state.metadata.level_select && (!state.metadata.continue_is_level_select || !playedGameBefore))
 			options.push(MENUITEM_LEVELSELECT);
-		if (playedGameBefore && !hasFinishedTheGame()) {
+		if (hasContinue) {
 			options.push(MENUITEM_NEWGAME);
 		}
 
@@ -8533,16 +8539,18 @@ function gotoLink() {
 	if (debugSwitch.includes('load')) console.log('gotoLink()', `stack:`, linkStack);
   	if (solving) return;
 	for (const position of playerPositions) {
-		const level = state.levels[curLevelNo];
+		const level = state.levels[curLevelNo]; // only in original level
 		const objids = level.getObjects(position);
 		for (const link of state.links // use the most recent visible link definition
 				.slice(0, level.linksTop)
 				.reverse()) {
 			if (objids.includes(link.object)) {
+				addUndoState(!!curLevelBak ? curLevelBak : backupLevel()); // save the state before changes
 				const linkEntry = { 
 					backup: backupLevel(), 		// will restore to this
 					backupTop: backups.length 	// will prune to this
 				};
+				restartTargetStack[linkStack.length] = restartTarget;
 				linkStack.push(linkEntry);
 				gotoLevel(link.targetNo);
 				return;
@@ -8553,7 +8561,11 @@ function gotoLink() {
 
 function returnLink() {
 	if (debugSwitch.includes('load')) console.log('returnLink()', `stack:`, linkStack);
+	if (state.metadata.stacked_checkpoint) {
+		restartTarget = restartTargetStack[linkStack.length - 1] || restartTarget;
+	}
 	const linkEntry = linkStack.pop();
+	restartTargetStack.length = linkStack.length;
 	const level = state.levels[linkEntry.backup.levelNo];
 	backups = backups.slice(0, linkEntry.backupTop);
 	if (verbose_logging)
@@ -8563,6 +8575,32 @@ function returnLink() {
 	resetFlickDat();
 	canvasResize();	
 	clearInputHistory();
+}
+
+//var extraStorageMap = {};
+
+function saveExtraStorageMap() {
+	if(!!window.localStorage) {
+		storage_set(document.URL + "_extraData", JSON.stringify(extraStorageMap));
+	}
+}
+function loadExtraStorageMap() {
+	extraStorageMap = {};
+	if (storage_has(document.URL+"_extraData")) {
+			extraStorageMap = JSON.parse(storage_get(document.URL + "_extraData"));
+	}
+}
+
+function extraStorageSet(key) {
+	extraStorageMap[key] = true;
+	saveExtraStorageMap();
+}
+function extraStorageClear(key) {
+	delete extraStorageMap[key];
+	saveExtraStorageMap();
+}
+function extraStorageGet(key) {
+	return extraStorageMap[key];
 }
 
 let introState = {
@@ -8971,6 +9009,7 @@ function tryPlayCloseMessageSound(){
 
 var backups=[];
 var restartTarget;
+var restartTargetStack = [];
 
 // create backup of level data for undo, restart, etc
 function backupLevel() {
@@ -8991,6 +9030,7 @@ function level4Serialization() {
 		oldflickscreendat: oldflickscreendat.concat([]),
     	cameraPositionTarget: Object.assign({}, cameraPositionTarget),
 		levelNo: curLevelNo,
+		depth: linkStack.length,
 	};
 	return ret;
 }
@@ -9001,6 +9041,7 @@ function setGameState(_state, command, randomseed) {
 	if (debugSwitch.includes('load')) console.log(`setGameState(${command})`);  //todo:
 	oldflickscreendat = [];
 	linkStack = [];
+	restartTargetStack = [];
 	timer = 0;
 	autotick = 0;
 	winning = false;
@@ -9047,6 +9088,10 @@ function setGameState(_state, command, randomseed) {
     switch(command[0]){
     	case "restart":
     	{
+			if (state.metadata.clear_extra_storage_on_restart) {
+				clearExtraDataStorage();
+			}
+				
 		    winning=false;
 		    timer=0;
 		    titleScreen=true;
@@ -9488,8 +9533,13 @@ function DoUndo(force,ignoreDuplicates, resetTween = true, resetAutoTick = true,
 	updateCameraPositionTarget();
     backups = backups.splice(0,backups.length-1);
 	// look for undo across link
-	if (linkStack.length > 0 && linkStack.at(-1).backupTop == backups.length)
-	  linkStack.pop();
+	if (linkStack.length > 0 && linkStack.at(-1).backupTop > backups.length) { // todo : Need to confirm it's > or >=
+		if (state.metadata.stacked_checkpoint) {
+			restartTarget = restartTargetStack[linkStack.length - 1] || restartTarget;
+		}
+		linkStack.pop();
+		restartTargetStack.length = linkStack.length;
+	}
     if (! force || forceSFX) {
       tryPlayUndoSound();
     }
@@ -9957,6 +10007,7 @@ function Rule(rule) {
     this.cellRowMasks_Movements = rule[10];
     this.isGlobal = rule[11];
     this.isOnce = rule[12];
+    this.ifStorage = rule[13];
 	this.ruleMask = this.cellRowMasks.reduce( (acc, m) => { acc.ior(m); return acc }, new BitVec(STRIDE_OBJ) );
 
 	/*I tried out doing a ruleMask_movements as well along the lines of the above,
@@ -10626,7 +10677,27 @@ Rule.prototype.applyAt = function(level,tuple,check,delta) {
 	}
 	}
 
-
+	// Check storage
+	//   If there is any STORAGE OBJECT at current position, apply rule
+	//     (todo: any in tuple, instead of any at current position)
+	//   otherwise not
+	// STORAGE OBJECT: object2 if in data else object1
+	if (this.ifStorage) {
+		let ok = false;
+		const position = tuple[0];
+		const objIds = level.getObjects(position);
+		for (const stor of state.storages) {
+			const targetObj = (stor.forLevel ? solvedSections.indexOf(stor.target) >= 0 : extraStorageMap[stor.target]) ? stor.object2 : stor.object1;
+			if (objIds.indexOf(targetObj) >= 0) {
+				ok = true;
+				break;
+			}
+		}
+		if (!ok) {
+			return false;
+		}
+	}
+	
     var result=false;
 	var anyellipses=false;
 	const cellIndexes = [];
@@ -10773,7 +10844,12 @@ Rule.prototype.queueCommands = function() {
 			consolePrintFromRule(`${command[1]}`, this, true);
 			continue;
 		} else if (curLevel.commandQueue.indexOf(command[0])>=0) {
-			continue;
+			if (command[0] == 'storage_set' || command[0] == 'storage_clear') {
+				// allow duplicates
+			}
+			else {
+				continue;
+			}
 		} else if (command[0] == 'gosub') {			// gosub is not queued
 			gosubTarget = command[1];
 			continue;
@@ -10795,6 +10871,12 @@ Rule.prototype.queueCommands = function() {
 		} else if (command[0] == 'status') {
 			statusText = command[1];
 		}		
+		else if (command[0] == 'storage_set') {
+			extraStorageSet(command[1]);
+		}
+		else if (command[0] == 'storage_clear') {
+			extraStorageClear(command[1]);
+		}
 
 		if (state.metadata.runtime_metadata_twiddling && twiddleable_params.includes(command[0])) {
 
@@ -11214,6 +11296,8 @@ var dirNames = ['up', 'left', 'down', 'right', 'action', 'mouse', 'lclick', 'rcl
 
 var perfCounters = {};
 
+var curLevelBak = null;
+
 /* returns a bool indicating if anything changed */
 function processInput(dir,dontDoWin,dontModify,bak,coord) {
 	//console.log(`Process input (${dir},${dontDoWin},${dontModify},${bak},${coord}) cmds=${level.commandQueue}`)
@@ -11249,6 +11333,7 @@ function procInp(dir,dontDoWin,dontModify,bak,coord) {
 	if (bak==undefined) {
 		bak = backupLevel();
 	}
+	curLevelBak = bak; // backup the state before changes
   
 	// this looks dodgy, but playerPositions is not used and dir test always succeeds
   	playerPositions= [];
@@ -11817,6 +11902,7 @@ function nextLevel() {
   	ignoreNotJustPressedAction=true;
 	if (titleScreen && titleMode <= 1) {
 		linkStack = [];
+		restartTargetStack = [];
 		backups = [];
 		if(isContinueOptionSelected()) {
 			// continue
@@ -11828,6 +11914,9 @@ function nextLevel() {
 
 			if (state.metadata.level_select === undefined) {
 				clearLocalStorage();
+			}
+			else if (state.metadata.clear_extra_storage_on_new_game) {
+				clearExtraDataStorage();
 			}
 
 			loadLevelFromStateOrTarget();
@@ -11984,12 +12073,24 @@ function clearLocalStorage() {
 	curLevelNo = 0;
 	curlevelTarget = null;
 	solvedSections = [];
+	extraStorageMap = {};
 
 	try {
 		if (!!window.localStorage) {
 			storage_remove(document.URL);
 			storage_remove(document.URL+'_checkpoint');
 			storage_remove(document.URL+'_sections');
+			storage_remove(document.URL+'_extraData');
+		}
+	} catch(ex){ }
+}
+
+function clearExtraDataStorage() {
+	if (debugSwitch.includes('menu')) console.log(`clearExtraDataStorage`);
+		extraStorageMap = {};
+	try {
+		if (!!window.localStorage) {
+			storage_remove(document.URL+'_extraData');
 		}
 	} catch(ex){ }
 }
@@ -12121,16 +12222,17 @@ let errorCount = 0;         //only counts errors
 let caseSensitive = false;
 
 // used here and in compiler
-const reg_commandwords = /^(afx[\w:=+-.]+|sfx\d+|cancel|checkpoint|restart|win|message|again|undo|nosave|quit|zoomscreen|flickscreen|smoothscreen|again_interval|realtime_interval|key_repeat_interval|noundo|norestart|background_color|text_color|goto|message_text_align|status|gosub|link|log|color_palette)$/i;
+const reg_commandwords = /^(afx[\w:=+-.]+|sfx\d+|cancel|checkpoint|restart|win|message|again|undo|nosave|quit|zoomscreen|flickscreen|smoothscreen|again_interval|realtime_interval|key_repeat_interval|noundo|norestart|background_color|text_color|goto|message_text_align|status|gosub|link|log|color_palette|storage_set|storage_clear)$/i;
 const reg_name = /^[\p{L}\p{N}_$]+/u;
 const reg_objectname = /^[\p{L}\p{N}_$]+(:[\p{L}\p{N}_$]+)*/u;              // object name for definition
 const reg_objectnamerel = /^[\p{L}\p{N}_$]+(:[<>v^]|:[\p{L}\p{N}_$]+)*$/u;  // object name with relative parts for use in rules
 const reg_objmodi = /^(canvas|copy|flip|rot|scale|shift|text|translate):/i;
 
 const commandwords_table = ['cancel', 'checkpoint', 'restart', 'win', 'message', 'again', 'undo', 'nosave', 'quit', 'zoomscreen', 'flickscreen', 'smoothscreen', 
-    'again_interval', 'realtime_interval', 'key_repeat_interval', 'noundo', 'norestart', 'background_color', 'text_color', 'goto', 'message_text_align', 'status', 'gosub'
+    'again_interval', 'realtime_interval', 'key_repeat_interval', 'noundo', 'norestart', 'background_color', 'text_color', 'goto', 'message_text_align', 'status', 'gosub', 
+    'storage_set', 'storage_clear'
 ];
-const commandargs_table = ['message', 'goto', 'status', 'gosub', 'log'];
+const commandargs_table = ['message', 'goto', 'status', 'gosub', 'log', 'storage_set', 'storage_clear'];
 const twiddleable_params = [
     'background_color', 'text_color', 'key_repeat_interval', 'realtime_interval', 'again_interval', 'flickscreen', 'zoomscreen', 'smoothscreen', 'noundo', 
     'norestart', 'message_text_align', 'color_palette'
@@ -12298,11 +12400,11 @@ var codeMirrorFn = function() {
     const reg_soundevents = /^(sfx\d+|undo|restart|titlescreen|startgame|cancel|endgame|startlevel|endlevel|showmessage|closemessage|pausescreen)\b/i;
 
     const reg_loopmarker = /^(startloop|endloop)$/;
-    const reg_ruledirectionindicators = /^(up|down|left|right|horizontal|vertical|orthogonal|late|rigid)$/;
+    const reg_ruledirectionindicators = /^(up|down|left|right|horizontal|vertical|orthogonal|late|rigid|ifstorage)$/;
     const reg_sounddirectionindicators = /^(up|down|left|right|horizontal|vertical|orthogonal)\b/i;
 
     const keyword_array = [ 'checkpoint', 'objects', 'collisionlayers', 'legend', 'sounds', 'rules', 'winconditions', 'levels',
-        '|', '[', ']', 'up', 'down', 'left', 'right', 'late', 'rigid', '^', 'v', '>', '<', 'no', 'randomdir', 'random', 'horizontal', 'vertical',
+        '|', '[', ']', 'up', 'down', 'left', 'right', 'late', 'rigid', 'ifstorage', '^', 'v', '>', '<', 'no', 'randomdir', 'random', 'horizontal', 'vertical',
         'any', 'all', 'no', 'some', 'moving', 'stationary', 'parallel', 'perpendicular', 'action', 'message', 'move', 
         'create', 'destroy', 'cantmove', 'sfx0', 'sfx1', 'sfx2', 'sfx3', 'Sfx4', 'sfx5', 'sfx6', 'sfx7', 'sfx8', 'sfx9', 'sfx10', 
         'cancel', 'checkpoint', 'restart', 'win', 'message', 'again', 'undo', 'restart', 'titlescreen', 'startgame', 'cancel', 'endgame', 
@@ -12311,7 +12413,8 @@ var codeMirrorFn = function() {
         'level_select', 'level_select_lock', 
         'mouse_clicks', 'noaction', 'nokeyboard', 'norepeat_action', 'norestart', 'noundo', 'require_player_movement', 
         'run_rules_on_level_start', 'runtime_metadata_twiddling', 'runtime_metadata_twiddling_debug', 'scanline', 
-        'skip_title_screen', 'smoothscreen_debug', 'status_line', 'throttle_movement', 'verbose_logging'];
+        'skip_title_screen', 'smoothscreen_debug', 'status_line', 'throttle_movement', 'verbose_logging', 
+        'no_continue_button', 'clear_extra_storage_on_restart', 'clear_extra_storage_on_new_game', 'stacked_checkpoint'];
     const prelude_param_text = ['title', 'author', 'homepage', 'custom_font', 'text_controls', 'text_message_continue', 'debug_switch', 'export_options' ];
     const prelude_param_number = ['again_interval', 'animate_interval', 'font_size', 'key_repeat_interval', 
         'level_select_unlocked_ahead', 'level_select_unlocked_rollover', 'local_radius', 'realtime_interval', 
@@ -13851,7 +13954,7 @@ var codeMirrorFn = function() {
         function getTokens() {
             let token
             // start of parse
-            if (token = lexer.match(/^(goto|level|link|message|section|title|input)/i, true)) { // allow omision of whitespace (with no warning!)
+            if (token = lexer.match(/^(goto|level|link|message|section|title|input|storage)/i, true)) { // allow omision of whitespace (with no warning!)
                 symbols.start = token;
                 lexer.pushToken(token, `${errorCase(token)}_VERB`);
 
@@ -13869,6 +13972,26 @@ var codeMirrorFn = function() {
                             lexer.pushToken(token, 'NAME');
                         }
                     }
+                }
+                else if (token == 'storage') {
+                    // e.g. storage obj1 obj2 name
+                    const storageObjects = [];
+                    for (let i = 0; i < 2; i++) {
+                        if (!(token = lexer.match(reg_objectname, !state.case_sensitive)))
+                            logError(`STORAGE needs an object to know where to put the storage.`, state.lineNumber);
+                        else if (!wordAlreadyDeclared(state, token))
+                            logError(`STORAGE object "${errorCase(token)}" not found, it needs to be already defined.`, state.lineNumber);
+                        else {
+                            const objects = expandSymbol(state, token, false, () => {});
+                            if (!(objects && objects.length == 1))
+                                logError(`STORAGE object "${errorCase(token)}" only works with a simple object or an alias, not something created with AND or OR.`, state.lineNumber);
+                            {
+                                storageObjects.push(objects[0]);
+                                lexer.pushToken(token, 'NAME');
+                            }
+                        }
+                    }
+                    symbols.storage = storageObjects;
                 }
                 symbols.text = lexer.matchAll();
                 if (symbols.text.length > 0)
@@ -13900,9 +14023,9 @@ var codeMirrorFn = function() {
                 state.levels.pop();
                 toplevel = null;
             }
-            const cmds = [ 'goto', 'level', 'link', 'message', 'section', 'title', 'input' ];
+            const cmds = [ 'goto', 'level', 'link', 'message', 'section', 'title', 'input', 'storage' ];
             if (cmds.includes(symbols.start))
-                state.levels.push([ symbols.start, symbols.text, state.lineNumber, symbols.link ]);
+                state.levels.push([ symbols.start, symbols.text, state.lineNumber, symbols.link, symbols.storage ]);
             else {
                 if (toplevel == null || cmds.includes(toplevel[0]))
                     state.levels.push([ state.lineNumber, null, symbols.gridline ]);
@@ -15302,6 +15425,7 @@ function levelsToArray(state) {
 	const levels = [];
     const links = [];
     //const links = {};
+    const storages = [];
     //const targets = new Set();
     let section, title, description, gotoFlag, input;
     
@@ -15345,8 +15469,15 @@ function levelsToArray(state) {
 				lineNumber: level[2],
                 object: level[3]
             });
-		} else if (level[0] == 'input') {
+        } else if (level[0] == 'input') {
             input = level[1];
+        } else if (level[0] == 'storage') {
+            storages.push({
+                target: level[1],
+                lineNumber: level[2],
+                object1: level[4][0],
+                object2: level[4][1],
+            });
 		} else {
             if (gotoFlag && links.length == 0) 
                 logWarning('Level unreachable due to previous GOTO.', level[0]);
@@ -15370,8 +15501,25 @@ function levelsToArray(state) {
             link.targetNo = -9999;
         }
     });
+    storages.forEach(storage => {
+        let index = -9999;
+        if ((index = levels.findIndex(level => storage.target == level.section)) != -1) {
+            storage.targetNo = index;
+            storage.forLevel = true;
+        }
+        else if ((index = levels.findIndex(level => storage.target == level.title)) != -1) {
+            storage.targetNo = -1-index;
+            storage.forLevel = true;
+        }
+        else {
+            //logError(`Sorry, storage target "${storage.target.toUpperCase()}" does not seem to be the name of any level.`, storage.lineNumber);
+            storage.targetNo = -9999;
+            storage.forLevel = false;
+        }
+    });
 	state.levels = levels;
 	state.links = links;
+    state.storages = storages;
 }
 
 function extractSections(state) {
@@ -15570,6 +15718,7 @@ function processRuleString(rule, state, curRules) {
     var globalRule = false;
     let isOnce = false;
     const prefixes = [];
+    var ifStorage = false;
 
     if (tokens.length===1) {
         if (tokens[0]==="startloop" ) {
@@ -15643,6 +15792,8 @@ function processRuleString(rule, state, curRules) {
                         }
                         parsestate = 1;
                         i--;
+                    } else if (token == 'ifstorage') {
+                        ifStorage = true;
                     } else {
                         logError("The start of a rule must consist of some number of directions (possibly 0), before the first bracket, specifying in what directions to look (with no direction specified, it applies in all four directions).  It seems you've just entered \"" + token.toUpperCase() + '\".', lineNumber);
                     }
@@ -15806,6 +15957,7 @@ var rule_line = {
     globalRule: globalRule,
     isOnce: isOnce,
     prefixes: prefixes,
+    ifStorage: ifStorage,
 };
 
     if (directionalRule(rule_line) === false && rule_line.directions.length>1) {
@@ -15835,6 +15987,7 @@ function deepCloneRule(rule, fnlhs, fnrhs) {
 		randomRule:rule.randomRule,
 		globalRule:rule.globalRule,
         isOnce: rule.isOnce,
+        ifStorage: rule.ifStorage,
 	};
 }
 
@@ -17041,6 +17194,7 @@ function collapseRules(groups) {
             newrule.push(cellRowMasks_Movements(newrule));
             newrule.push(oldrule.globalRule);
             newrule.push(oldrule.isOnce);
+            newrule.push(oldrule.ifStorage);
             rules[i] = new Rule(newrule);
         }
     }
@@ -17612,6 +17766,9 @@ function cacheRuleStringRep(rule) {
 	if (rule.late) {
 		result = "LATE "+result+" ";
 	}
+    if (rule.ifStorage) {
+        result = "IFSTORAGE "+result+" ";
+    }
 	for (var i=0;i<rule.lhs.length;i++) {
 		var cellRow = rule.lhs[i];
 		result = result + printCellRow(cellRow);
