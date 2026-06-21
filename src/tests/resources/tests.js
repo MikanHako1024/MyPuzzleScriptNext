@@ -22,24 +22,30 @@ QUnit.config.urlConfig.push({
 	label: "Show source",
 	tooltip: "Enabling this will show the source code, if needed."
 });
+QUnit.config.urlConfig.push({
+	id: "errorsonly",
+	label: "Show errors only",
+	tooltip: "Enabling this will show errors but not warnings."
+});
 
-runRuleSuite('PS rules ⚖️', testdata);
-runRuleSuite('PS+ rules ⚖️', plus_testdata);
-runRuleSuite('PS> rules ⚖️', next_testdata);
+runRuleSuite('PS rules ⚖️', testdata, false);
+runRuleSuite('PS+ rules ⚖️', plus_testdata, true);
+runRuleSuite('PS> rules ⚖️', next_testdata, true);
 runCompileSuite('PS compile 🐛', errormessage_testdata);
 runCompileSuite('PS+ compile 🐛', plus_errormessage_testdata);
 
-// cannot get this to work, spent enough time
+// cannot get this to work loading files directly, spent enough time
 // see https://stackoverflow.com/questions/48969495/in-javascript-how-do-i-should-i-use-async-await-with-xmlhttprequest
-//runFileSuite('Demo files 📃', 'demo_list.txt');
+
+runFileSuite('Demo files 📃', scripts_data);
 
 //addStartLink();
 
 // run tests that check for correct result in final level, seed and sound
-function runRuleSuite(module, testDataList) {
+function runRuleSuite(module, testDataList, checkerrors) {
 	QUnit.module(module, () => {
 	for (const [testName, testData] of testDataList.slice(0,limit)) 
-		testRule(testName, testData);
+		testRule(testName, testData, checkerrors);
 	});
 }
 
@@ -52,22 +58,15 @@ function runCompileSuite(module, testDataList) {
 }
 
 // Test that a list of files compile without error or warning
-function runFileSuite(title, filename) {
-	QUnit.module(title, () => {
-		getTextFile(filename, files => files.split('\n')
-			.map(f => f.trim())
-			.filter(f => !['README', 'blank.txt'].includes(f))
-			.slice(0, limit)
-			.forEach(f => {
-				getTextFile(`../demo/${f}`, text => {
-					testCompile(f, [text, []]);
-				});
-			})
-		);
+function runFileSuite(module, testdata) {
+	QUnit.module(module, () => {
+		testdata.forEach(f => {
+			testCompile(f.name, [ f.text, [] ]);
+		})
 	});
 }
 
-function testRule(testName, testData) {
+function testRule(testName, testData, checkerrors) {
 	const [tdCode, tdi, tdResult, tdl, tdSeed, tdSounds] = testData;
 	const tdInput = tdi.map( j => inputVals[j] )
 		.join('')
@@ -79,16 +78,17 @@ function testRule(testName, testData) {
 		+ lineof('Expected level', tdLevel) 
 		+ (tdSounds ? lineof('Expected sounds', tdSounds) : '')
 		+ '<br/>';
+	const errstrings = QUnit.config.errorsonly ? errorStringsOnly : errorStrings;
 
 	QUnit.test(
 		testName,
 		function(tdat) {
 			return function() {
 				testLookup[QUnit.config.current.testId] = testData;
-				QUnit.assert.true(runTest(tdat),
+				QUnit.assert.true(runTest(tdat, checkerrors),
 					"Passed all tests"
 				+ tdDescription
-				+ (errorStrings.length > 0 ? listify('Actual errors', errorStrings) : '')
+				+ (errstrings.length > 0 ? listify('Actual errors', errstrings) : '')
 				+ (soundHistory.length > 0 ? lineof('Actual sounds', soundHistory.join()) : '')
 				+ (QUnit.config.showsource ? lineof('Game source', `<pre>${tdCode}</pre>`) : ''));
 			};
@@ -98,6 +98,7 @@ function testRule(testName, testData) {
 
 function testCompile(testName, testData) {
 	const [tdCode, tdErrors] = testData;
+	const errstrings = QUnit.config.errorsonly ? errorStringsOnly : errorStrings;
 	//const testerrors = '<b>Expected errors:</b><ul>' + tdErrors.map(m => '<li>'+JSON.stringify(m)+'</li>').join('') + '</ul>';
 	QUnit.test(
 		testName,
@@ -107,7 +108,7 @@ function testCompile(testName, testData) {
 				QUnit.assert.true(runCompilationTest(tdat),
 					"Passed compile test<br/>"
 					+ (tdErrors.length > 0 ? listify("Expected errors", tdErrors) : '')
-					+ (errorStrings.length > 0 ? listify('Actual errors', errorStrings) : '')
+					+ (errstrings.length > 0 ? listify('Actual errors', errstrings) : '')
 					+ (QUnit.config.showsource ? lineof('Game source', `<pre>${tdCode}</pre>`) : ''));
 			}
 		}(testData)
@@ -178,9 +179,11 @@ function getTextFile(filename, callback) {
 	var req = new XMLHttpRequest();
 	req.open('GET', filename);
 	req.onload = event => {
+		//console.log(`Onload: ${filename} status: ${req.status}`);
 		callback(req.responseText);
 	}
 	req.onerror = event => {
+		//console.log(`Onerror: ${filename} status: ${req.status}`);
 		consoleError("HTTP Error "+ req.status + ' - ' + req.statusText);
 		callback("");
 	}

@@ -24,11 +24,12 @@ const MAX_ERRORS_FOR_REAL=100;
 
 let compiling = false;
 let errorStrings = [];      //also stores warning strings
+let errorStringsOnly = [];  //only error strings
 let errorCount = 0;         //only counts errors
 let caseSensitive = false;
 
 // used here and in compiler
-const reg_commandwords = /^(afx[\w:=+-.]+|sfx\d+|cancel|checkpoint|restart|win|message|again|undo|nosave|quit|zoomscreen|flickscreen|smoothscreen|again_interval|realtime_interval|key_repeat_interval|noundo|norestart|background_color|text_color|goto|message_text_align|status|gosub|link|log|storage_set|storage_clear)$/i;
+const reg_commandwords = /^(afx[\w:=+-.]+|sfx\d+|cancel|checkpoint|restart|win|message|again|undo|nosave|quit|zoomscreen|flickscreen|smoothscreen|again_interval|realtime_interval|key_repeat_interval|noundo|norestart|background_color|text_color|goto|message_text_align|status|gosub|link|log|color_palette|storage_set|storage_clear)$/i;
 const reg_name = /^[\p{L}\p{N}_$]+/u;
 const reg_objectname = /^[\p{L}\p{N}_$]+(:[\p{L}\p{N}_$]+)*/u;              // object name for definition
 const reg_objectnamerel = /^[\p{L}\p{N}_$]+(:[<>v^]|:[\p{L}\p{N}_$]+)*$/u;  // object name with relative parts for use in rules
@@ -36,9 +37,13 @@ const reg_objmodi = /^(canvas|copy|flip|rot|scale|shift|text|translate):/i;
 
 const commandwords_table = ['cancel', 'checkpoint', 'restart', 'win', 'message', 'again', 'undo', 'nosave', 'quit', 'zoomscreen', 'flickscreen', 'smoothscreen', 
     'again_interval', 'realtime_interval', 'key_repeat_interval', 'noundo', 'norestart', 'background_color', 'text_color', 'goto', 'message_text_align', 'status', 'gosub', 
-    'storage_set', 'storage_clear'];
+    'storage_set', 'storage_clear'
+];
 const commandargs_table = ['message', 'goto', 'status', 'gosub', 'log', 'storage_set', 'storage_clear'];
-const twiddleable_params = ['background_color', 'text_color', 'key_repeat_interval', 'realtime_interval', 'again_interval', 'flickscreen', 'zoomscreen', 'smoothscreen', 'noundo', 'norestart', 'message_text_align'];
+const twiddleable_params = [
+    'background_color', 'text_color', 'key_repeat_interval', 'realtime_interval', 'again_interval', 'flickscreen', 'zoomscreen', 'smoothscreen', 'noundo', 
+    'norestart', 'message_text_align', 'color_palette'
+];
 const soundverbs_directional = ['move', 'cantmove'];
 const soundverbs_other = [ 'create', 'destroy' ];
 let soundverbs_movement = [ 'action' ];  // clicks to be added
@@ -85,12 +90,13 @@ function logErrorCacheable(str, lineNumber,urgent) {
             //do nothing, duplicate error
          } else {
             consolePrint(errorString);
+            errorStringsOnly.push(errorString);
             errorStrings.push(errorString);
             errorCount++;
-			if (errorStrings.length>MAX_ERRORS_FOR_REAL){
+			if (errorCount > MAX_ERRORS_FOR_REAL){
                 TooManyErrors();
+            }
         }
-    }
     }
 }
 
@@ -100,16 +106,17 @@ function logError(str, lineNumber,urgent) {
             return logErrorNoLine(str,urgent);
         }
         var errorString = '<a onclick="jumpToLine(' + lineNumber.toString() + ');"  href="javascript:void(0);"><span class="errorTextLineNumber"> line ' + lineNumber.toString() + '</span></a> : ' + '<span class="errorText">' + str + '</span>';
-         if (errorStrings.indexOf(errorString) >= 0 && !urgent) {
+        if (errorStrings.indexOf(errorString) >= 0 && !urgent) {
             //do nothing, duplicate error
-         } else {
+        } else {
             consolePrint(errorString,true);
             errorStrings.push(errorString);
+            errorStringsOnly.push(errorString);
             errorCount++;
-			if (errorStrings.length>MAX_ERRORS_FOR_REAL){
+			if (errorCount > MAX_ERRORS_FOR_REAL){
                 TooManyErrors();
+            }
         }
-    }
     }
 }
 
@@ -124,10 +131,10 @@ function logWarning(str, lineNumber, urgent) {
          } else {
             consolePrint(errorString,true);
             errorStrings.push(errorString);
-			if (errorStrings.length>MAX_ERRORS_FOR_REAL){
-                TooManyErrors();
+			// if (errorStrings.length > MAX_ERRORS_FOR_REAL) {
+            //     TooManyErrors();
+            // }
         }
-    }
     }
 }
 
@@ -139,12 +146,11 @@ function logWarningNoLine(str, urgent, increaseErrorCount = false) {
          } else {
             consolePrint(errorString,true);
             errorStrings.push(errorString);
-            if (errorStrings.length > MAX_ERRORS_FOR_REAL) {
+            if (increaseErrorCount)
+                errorCount++;
+			if (errorCount > MAX_ERRORS_FOR_REAL) {
                 TooManyErrors();
-        }
-        }
-        if (increaseErrorCount) {
-            errorCount++;
+            }
         }
     }
 }
@@ -157,10 +163,11 @@ function logErrorNoLine(str,urgent) {
          } else {
             consolePrint(errorString,true);
             errorStrings.push(errorString);
-        errorCount++;
-			if (errorStrings.length>MAX_ERRORS_FOR_REAL){
+            errorStringsOnly.push(errorString);
+            errorCount++;
+			if (errorCount > MAX_ERRORS_FOR_REAL) {
                 TooManyErrors();
-    }
+            }
         }
     }
 }
@@ -209,17 +216,18 @@ var codeMirrorFn = function() {
         'create', 'destroy', 'cantmove', 'sfx0', 'sfx1', 'sfx2', 'sfx3', 'Sfx4', 'sfx5', 'sfx6', 'sfx7', 'sfx8', 'sfx9', 'sfx10', 
         'cancel', 'checkpoint', 'restart', 'win', 'message', 'again', 'undo', 'restart', 'titlescreen', 'startgame', 'cancel', 'endgame', 
         'startlevel', 'endlevel', 'showmessage', 'closemessage' ];
-    const prelude_keywords = ['allow_undo_level', 'auto_level_titles', 'case_sensitive', 'continue_is_level_select', 'debug', 'level_select', 'level_select_lock', 
+    const prelude_keywords = ['allow_undo_level', 'auto_level_titles', 'case_sensitive', 'continue_is_level_select', 'debug', 'enable_pause', 
+        'level_select', 'level_select_lock', 
         'mouse_clicks', 'noaction', 'nokeyboard', 'norepeat_action', 'norestart', 'noundo', 'require_player_movement', 
         'run_rules_on_level_start', 'runtime_metadata_twiddling', 'runtime_metadata_twiddling_debug', 'scanline', 
         'skip_title_screen', 'smoothscreen_debug', 'status_line', 'throttle_movement', 'verbose_logging', 
         'no_continue_button', 'clear_extra_storage_on_restart', 'clear_extra_storage_on_new_game', 'stacked_checkpoint'];
-    const prelude_param_text = ['title', 'author', 'homepage', 'custom_font', 'text_controls', 'text_message_continue', 'debug_switch'];
+    const prelude_param_text = ['title', 'author', 'homepage', 'custom_font', 'text_controls', 'text_message_continue', 'debug_switch', 'export_options' ];
     const prelude_param_number = ['again_interval', 'animate_interval', 'font_size', 'key_repeat_interval', 
         'level_select_unlocked_ahead', 'level_select_unlocked_rollover', 'local_radius', 'realtime_interval', 
         'tween_length', 'tween_snap'];
     const prelude_param_single = [
-        'background_color', 'color_palette', 'flickscreen', 'level_select_solve_symbol', 'keyhint_color', 
+        'background_color', 'flickscreen', 'level_select_solve_symbol', 'keyhint_color', 
         'message_text_align', 'mouse_drag', 'mouse_left', 'mouse_rdrag', 'mouse_right', 'mouse_rup', 'mouse_up',
         'sitelock_hostname_whitelist', 'sitelock_origin_whitelist', 'sprite_size', 'text_color', 'tween_easing', 'zoomscreen',
         'author_color', 'title_color'
@@ -227,7 +235,9 @@ var codeMirrorFn = function() {
     const prelude_not_implemented = [
         'game_uri', 'level_title_style', 'show_level_title_in_menu', 
     ];
-    const prelude_param_multi = ['smoothscreen', 'puzzlescript', 'youtube', 'load_images'];
+    const prelude_param_multi = [
+        'smoothscreen', 'puzzlescript', 'youtube', 'load_images', 'color_palette'
+    ];
     const prelude_tables = [prelude_keywords, prelude_param_text, prelude_param_number, 
         prelude_param_single, prelude_param_multi];
     const color_names = ['black', 'white', 'darkgray', 'lightgray', 'gray', 'grey', 'darkgrey', 'lightgrey',
@@ -597,6 +607,8 @@ var codeMirrorFn = function() {
                     logWarningNoLine("Please make sure that CASE_SENSITIVE comes before any case sensitive prelude setting.", false, false);
             } else if (ident == 'debug_switch') {
                 debugSwitch = value[1];
+            } else if (ident == 'export_options') {
+                exportOptions = value[1];
             } else if (ident == 'mouse_clicks' && !directions_table.includes(mouse_clicks_table[0])) {
                 directions_table.push(...mouse_clicks_table);
                 directions_only.push(...mouse_clicks_table);
@@ -919,6 +931,7 @@ var codeMirrorFn = function() {
             delete newobj.canRedef;
             newobj.colors = [];
             newobj.spritematrix = [];
+            newobj.spriteoffset = { x: 0, y: 0 };
             newobj.transforms = [];
             delete state.objects[candname];
             state.objects[candname] = newobj;
@@ -1164,7 +1177,7 @@ var codeMirrorFn = function() {
                     lexer.pushToken(token, 'KEYWORD');
                     lexer.matchComment();
                     // P:S compat: "- and | for horizontal and vertical mirrors"
-                    symbols.transforms.push([ 'flip', token == '-' ? '>' : 'v']);  
+                    symbols.transforms.push([ 'flip', token == '-' ? 'down' : 'right']);  
 
                 } else if (token = lexer.match(/^shift:/i)) {
                     lexer.pushToken(token, 'KEYWORD');
@@ -1251,28 +1264,31 @@ var codeMirrorFn = function() {
         }
     }
 
-    // if the last object has tags, expand it, delete original name and add property
+    // if the last object has tags, expand it, create new objects
+    // delete original name and add property
+    // then apply the transforms
     function expandLastObject(state) {
         const candname = state.objects_candname;
         state.objects_candname = null;
-        if (!candname || !hasParts(candname)) return;
-        const obj = state.objects[candname];
-        const newobjects = expandObjectDef(state, candname, obj);
-        if (newobjects) {
-            // they will have been created
-            for (const [newid, newvalue] of newobjects) {
-                registerOriginalCaseName(state, newid, state.lineNumber);
-                const clone = newvalue.cloneSprite;
-                if (clone && !(wordAlreadyDeclared(state, clone))) {  // should this be state.objects?
-                    logError(`You're trying to copy from "${errorCase(clone)}" but it's not defined anywhere.`, state.lineNumber)
+        const obj = candname && state.objects[candname];
+        if (!obj) return;
+        if (hasParts(candname)) {
+            const newobjects = expandObjectDef(state, candname, obj);
+            if (newobjects) {
+                // they will have been created
+                for (const [newid, newobj] of newobjects) {
+                    registerOriginalCaseName(state, newid, state.lineNumber);
+                    applyTransforms(state, newobj);
                 }
-            }
-            const newlegend = [ candname, ...newobjects.map(n => n[0])];
-            newlegend.lineNumber = obj.lineNumber;  // bug: it's an array, isn't it?
+                const newlegend = [ candname, ...newobjects.map(n => n[0])];
+                newlegend.lineNumber = obj.lineNumber;  // bug: it's an array, isn't it?
 
-            delete state.objects[candname];
-            state.legend_properties.push(newlegend);
+                delete state.objects[candname];
+                state.legend_properties.push(newlegend);
+                return;
+            }
         }
+        applyTransforms(state, obj);
     }
 
     ////////////////////////////////////////////////////////////////////////////
@@ -1745,7 +1761,7 @@ var codeMirrorFn = function() {
         function getTokens() {
             let token
             // start of parse
-            if (token = lexer.match(/^(goto|level|link|message|section|title|storage)/i, true)) { // allow omision of whitespace (with no warning!)
+            if (token = lexer.match(/^(goto|level|link|message|section|title|input|storage)/i, true)) { // allow omision of whitespace (with no warning!)
                 symbols.start = token;
                 lexer.pushToken(token, `${errorCase(token)}_VERB`);
 
@@ -1814,7 +1830,7 @@ var codeMirrorFn = function() {
                 state.levels.pop();
                 toplevel = null;
             }
-            const cmds = [ 'goto', 'level', 'link', 'message', 'section', 'title', 'storage', ];
+            const cmds = [ 'goto', 'level', 'link', 'message', 'section', 'title', 'input', 'storage' ];
             if (cmds.includes(symbols.start))
                 state.levels.push([ symbols.start, symbols.text, state.lineNumber, symbols.link, symbols.storage ]);
             else {

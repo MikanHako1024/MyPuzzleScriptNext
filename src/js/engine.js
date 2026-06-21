@@ -97,6 +97,7 @@ function doSetupTitleScreenLevelContinue(){
             if (storage_has(document.URL+'_checkpoint')) {
                 var backupStr = storage_get(document.URL+'_checkpoint');
                 curlevelTarget = JSON.parse(backupStr);
+				if (debugSwitch.includes('menu')) console.log(`doSetupTitleScreenLevelContinue `, 'curlevelTarget=', curlevelTarget);
                 
                 var arr = [];
                 for(var p in Object.keys(curlevelTarget.dat)) {
@@ -104,7 +105,7 @@ function doSetupTitleScreenLevelContinue(){
                 }
                 curlevelTarget.dat = new Int32Array(arr);
             }
-            curLevelNo = storage_get(document.URL); 
+            curLevelNo = +storage_get(document.URL); 
 			if (storage_has(document.URL+"_sections")) {
 				solvedSections = JSON.parse(storage_get(document.URL + "_sections"));
 			}
@@ -127,8 +128,8 @@ function hasStartedTheGame() {
 }
 
 function hasFinishedTheGame() {
-	return state.metadata.level_select && solvedSections.length == state.sections.length
-		|| curLevelNo >= state.levels.length - 1; 
+	return state.metadata.level_select && (solvedSections.length == state.sections.length)
+		|| curLevelNo >= state.levels.length; 
 }
 
 function hasSolvedAtLeastOneSection() {
@@ -161,7 +162,7 @@ function isLevelSelectOptionSelected() {
 }
 
 function generateTitleScreen(hoverLine, scrollIncrement, selectLine) {
-	if (debugSwitch.includes('menu')) console.log(`generateTitleScreen()`, hoverLine, scrollIncrement, selectLine);
+	if (debugSwitch.includes('menu')) console.log(`generateTitleScreen()`, 'hoverLine=', hoverLine, 'scrollIncrement=', scrollIncrement, 'selectLine=' , selectLine);
 	lineColorOverride = [];
   	tryLoadCustomFont();
 
@@ -202,12 +203,13 @@ function generateTitleScreen(hoverLine, scrollIncrement, selectLine) {
 		const select = selectLine || hoverLine;
 		titleSelection = screen.options.includes(select) ? options[screen.options.indexOf(select)] : false;  // todo: ???
 	}
+	if (debugSwitch.includes('menu')) console.log(`generateTitleScreen2`, `titleSelection=`, titleSelection, `levelSelectScrollPos=`, levelSelectScrollPos);
 
 	const setImage = (n,text) => {
 		if (!text) throw "image";
 		titleImage[n] = text.padEnd(TITLE_WIDTH);
-		if (state.metadata.keyhint_color) 
-			lineColorOverride[n] = state.metadata.keyhint_color;
+		if (state.keyhint_color) 
+			lineColorOverride[n] = state.keyhint_color;
 	}
 	if (state.metadata.text_controls) {
 		const text = wordwrap(state.metadata.text_controls, TITLE_WIDTH, true);
@@ -233,8 +235,8 @@ function generateTitleScreen(hoverLine, scrollIncrement, selectLine) {
 	}
 	titleSplit.forEach((line,x) => {
 		titleImage[1 + x] = centerText(line.trim(), TITLE_WIDTH);
-		if (state.metadata.title_color)
-			lineColorOverride[1 + x] = state.metadata.title_color;
+		if (state.title_color)
+			lineColorOverride[1 + x] = state.title_color;
 	});
 
 	if (state.metadata.author) {
@@ -246,8 +248,8 @@ function generateTitleScreen(hoverLine, scrollIncrement, selectLine) {
 		}
 		split.forEach((line, x) => { 
 			titleImage[3 + x]=line.trim().padStart(TITLE_WIDTH);
-			if (state.metadata.author_color)
-				lineColorOverride[3 + x] = state.metadata.author_color;
+			if (state.author_color)
+				lineColorOverride[3 + x] = state.author_color;
 		});
 	}
 	redraw();
@@ -265,7 +267,7 @@ function goToPauseScreen() {
 	textMode = true;
 	if (againing)
 		DoUndo(true, false);
-    againing = false;//@@
+    againing = false;
 	messagetext = "";
 
 	generatePauseScreen();
@@ -297,7 +299,7 @@ function selectPauseScreen(lineNo) {
 			}
 		},
 		!state.metadata.norestart ? () => {
-			DoRestart(true);
+			DoRestart();
 			textMode = false;
 			titleScreen = false;
 			canvasResize();
@@ -379,7 +381,7 @@ function gotoLevelSelectScreen() {
 }
 
 function generateLevelSelectScreen(hoverLine, scrollIncrement, selectLine) { 
-	if (debugSwitch.includes('menu')) console.log('generateLevelSelectScreen()', hoverLine, scrollIncrement, selectLine);
+	if (debugSwitch.includes('menu')) console.log('generateLevelSelectScreen{ ', 'hoverLine=', hoverLine, 'scrollIncrement=', scrollIncrement, 'selectLine=', selectLine);
 	lineColorOverride = [];
 
 	// set initial highlight to current level
@@ -402,9 +404,9 @@ function generateLevelSelectScreen(hoverLine, scrollIncrement, selectLine) {
 			}
 		}
 		if(state.metadata.level_select_unlocked_ahead !== undefined) {
-			unlockedUntil += Number(state.metadata.level_select_unlocked_ahead);
+			unlockedUntil += state.metadata.level_select_unlocked_ahead;
 		} else if (state.metadata.level_select_unlocked_rollover !== undefined) {
-			unlockedUntil = solvedSections.length + Number(state.metadata.level_select_unlocked_rollover) - 1;
+			unlockedUntil = solvedSections.length + state.metadata.level_select_unlocked_rollover - 1;
 		} else {
 			unlockedUntil += 1;
 		}
@@ -440,6 +442,7 @@ function generateLevelSelectScreen(hoverLine, scrollIncrement, selectLine) {
 			selectLine = -1;
 			titleSelected = false;
 			quittingTitleScreen = false;
+			//TryPlayLockedSound();
 		}
 		
 		if (selected && !locked) {
@@ -478,12 +481,14 @@ function gotoLevel(index) {
 		curLevel = levelAllObjects(state);
 	} else {
 		curLevelNo = (index >= 0) ? state.sections[index].firstLevel : -1 - index;
+		curlevelTarget = null; // #164
 		loadLevelFromStateOrTarget();
 	}
 	updateLocalStorage();
 	resetFlickDat();
 	canvasResize();	
 	clearInputHistory();
+	processLevelInput();
 }
   
 function gotoLink() {
@@ -657,8 +662,8 @@ function drawMessageScreen(message) {
 		: IsMouseGameInputEnabled() ? "Click or X to continue" : "X to continue");
 
 	titleImage = fillAndHighlight(screen);
-	if (state.metadata.keyhint_color)
-		lineColorOverride[screen.options[0]] = state.metadata.keyhint_color;
+	if (state.keyhint_color)
+		lineColorOverride[screen.options[0]] = state.keyhint_color;
 
 	const splitMessage = wordwrap(message, TITLE_WIDTH, true);
 
@@ -701,6 +706,7 @@ function loadLevelFromLevelDat(state,leveldat,randomseed,clearinputhistory) {
 	suppressInput = false;
     if (leveldat===undefined) {
     	consolePrint("Trying to access a level that doesn't exist.",true);
+		curLevelNo = 0;  // bad level from storage, needs to be reset in case of skip_title_screen
 		goToTitleScreen();
     	return;
     }
@@ -720,14 +726,14 @@ function loadLevelFromLevelDat(state,leveldat,randomseed,clearinputhistory) {
 			consolePrint(`GOTO (${htmlJump(leveldat.lineNumber)})`, true, leveldat.lineNumber);
       	// This "level" is actually a goto.
       	//tryPlayGotoSound();
-      	setSectionSolved(state.levels[Number(curLevelNo)].section)
+      	setSectionSolved(state.levels[curLevelNo].section)
       	gotoLevel(leveldat.target);
     } else {
       	titleMode=0;
       	textMode=false;
     	curLevel = leveldat.clone();
 		if (verbose_logging)
-			consolePrint(`Loading level ${leveldat.section || ''} (${htmlJump(leveldat.lineNumber)}).`, true, leveldat.lineNumber);  //todo:
+			consolePrint(`Loading "${leveldat.section || leveldat.title}" (${htmlJump(leveldat.lineNumber)}).`, true, leveldat.lineNumber);  //todo:
     	RebuildLevelArrays();
         if (state!==undefined) {
 	        if (state.metadata.flickscreen!==undefined){
@@ -777,6 +783,8 @@ function loadLevelFromLevelDat(state,leveldat,randomseed,clearinputhistory) {
 function loadLevelFromStateTarget(state,levelindex,target,randomseed) { 
 	if (debugSwitch.includes('load')) console.log(`loadLevelFromStateTarget(${levelindex},${target})`);
     var leveldat = target;    
+	if (verbose_logging)
+		consolePrint(`Returning to checkpoint in "${state.levels[levelindex].section || state.levels[levelindex].title}".`); 
   	curLevelNo=levelindex;
   	curlevelTarget=target;
     if (leveldat.message===undefined) {
@@ -793,7 +801,7 @@ function loadLevelFromStateTarget(state,levelindex,target,randomseed) {
 }
 
 function loadLevelFromState(state,levelindex,randomseed) {  
-	if (debugSwitch.includes('load')) console.log(`loadLevelFromState(${levelindex})`);
+	if (debugSwitch.includes('load')) console.log(`loadLevelFromState(levelindex=${levelindex})`);
 	var leveldat = state.levels[levelindex];    
 	curLevelNo=levelindex;
 	curlevelTarget=null;
@@ -1017,20 +1025,6 @@ function setGameState(_state, command, randomseed) {
     if (command[0]!=="rebuild"){
       backups=[];
     }
-    //set sprites
-    objectSprites = [];
-    for (const n in state.objects) {
-        if (state.objects.hasOwnProperty(n)) {
-            const object = state.objects[n];
-			objectSprites[object.id] = {
-                dat: object.spritematrix,
-                colors: object.colors,
-				text: object.spritetext,
-                vector: object.vector,
-				scale: object.scale,
-            };
-        }
-    }
     if (state.metadata.realtime_interval!==undefined) {
       autotick=0;
       autotickinterval=state.metadata.realtime_interval*1000;
@@ -1061,15 +1055,18 @@ function setGameState(_state, command, randomseed) {
 		    textMode=true;
 		    titleSelection=0;
 		    titleSelected=false;
+			levelSelectScrollPos = 0;		// else level select interferes with title screen
 		    quittingMessageScreen=false;
 		    quittingTitleScreen=false;
 			titleMode = showContinueOptionOnTitleScreen() ? 1 : 0;
 
+			// regenerate text to pick up new colours if any
+			regenText();
 			tryLoadImages();
 
-			if (state.metadata.skip_title_screen!==undefined) {
+			if (state.metadata.skip_title_screen) {
 				consolePrint("Skipping title screen.")
-				if(state.metadata["continue_is_level_select"] !== undefined) {
+				if(state.metadata.continue_is_level_select) {
 					gotoLevelSelectScreen();
 				}
 				else if(titleMode <= 1) {
@@ -1224,8 +1221,8 @@ function RebuildLevelArrays() {
 let messagetext="";			// text for command message
 let statusText = "";  		// text for status line
 let gosubTarget = -1;  		// name of target gosub
-var currentMovedEntities = {};
-var newMovedEntities = {};
+var currentMovedEntities = {};		// entities to be tween animated
+var newMovedEntities = {};			// entities that have moved this turn
 
 function applyDiff(diff, level_objects) {
 
@@ -1265,14 +1262,13 @@ function unconsolidateDiff(before,after) {
 }
 
 function restoreLevel(lev, snapCamera, resetTween = true, resetAutoTick = true) {
-	if (debugSwitch.includes('load')) console.log(`restoreLevel()`, lev);
+	if (debugSwitch.includes('load')) console.log(`restoreLevel()`, lev, snapCamera, resetTween, resetAutoTick);
 	var diffing = lev.hasOwnProperty("diff");
 
 	oldflickscreendat=lev.oldflickscreendat.concat([]);
 
 	if (resetTween) {
 		currentMovedEntities = {};
-		//console.log("Wiped movedEntities (level)")
 	}
 
 	const switchLevel = lev.levelNo >= 0 && lev.levelNo != curLevelNo;
@@ -1438,14 +1434,15 @@ function DoRestart(force) {
 	}
 
 	restoreLevel(restartTarget, true);
+	initSmoothCamera();
 	tryPlayRestartSound();
 	document.dispatchEvent(new CustomEvent("psplusLevelRestarted", {detail: curLevelNo}));
 
 	if ('run_rules_on_level_start' in state.metadata) {
     	processInput(-1,true);
-  }
+  	}
   
-  twiddleMetadataExtras();
+  	twiddleMetadataExtras();
 	
 	curLevel.commandQueue=[];
 	curLevel.commandQueueSourceRules=[];
@@ -1488,7 +1485,8 @@ function DoUndo(force,ignoreDuplicates, resetTween = true, resetAutoTick = true,
   if (backups.length>0) {
     var torestore = backups[backups.length-1];
 	if (debugSwitch.includes('undo')) console.log(`DoUndo length=${backups.length} torestore=`, torestore);
-    restoreLevel(torestore, null, resetTween, resetAutoTick);
+    restoreLevel(torestore, null, resetTween, resetAutoTick); 
+	updateCameraPositionTarget();
     backups = backups.splice(0,backups.length-1);
 	// look for undo across link
 	if (linkStack.length > 0 && linkStack.at(-1).backupTop > backups.length) { // todo : Need to confirm it's > or >=
@@ -1693,8 +1691,8 @@ function repositionEntitiesOnLayer(positionIndex,layer,dirMask)
     return true;
 }
 
-function repositionEntitiesAtCell(positionIndex) {
-    var movementMask = curLevel.getMovements(positionIndex);
+function repositionEntitiesAtCell(positionIndex, dontModify) {
+		var movementMask = curLevel.getMovements(positionIndex);
     if (movementMask.iszero())
         return false;
 
@@ -1704,7 +1702,7 @@ function repositionEntitiesAtCell(positionIndex) {
         if (layerMovement!==0) {
             var thismoved = repositionEntitiesOnLayer(positionIndex,layer,layerMovement);
             if (thismoved) {
-				if (state.metadata.tween_length) {
+				if (state.metadata.tween_length && !dontModify) {
 					var delta = dirMasksDelta[layerMovement];
 					var targetIndex = (positionIndex+delta[1]+delta[0]*curLevel.height);
 
@@ -2113,6 +2111,7 @@ function cellRowMatchesWildcardFunctionGenerate(direction,cellRow,i, maxk, mink)
 
 }
 
+//@@ should these go in globals? Might fix one notified problem (no repro)
 let MOV_BITS = 5;		// doc: no of bits to hold movement as mask
 let MOV_MASK = 0x1f;	// doc: bit mask to match
 var STRIDE_OBJ = 1;	    // doc: size of BitVec to hold objects, at 32 bits per
@@ -2682,12 +2681,13 @@ Rule.prototype.applyAt = function(level,tuple,check,delta) {
             currentIndex += delta;
         }
     }
+	perfCounters.applied++;
 
-  if (verbose_logging && result){
-    var ruleDirection = dirMaskName[rule.direction];
-    if (!rule.directional()){
-      ruleDirection="";
-    }
+  	if (verbose_logging && result){
+    	var ruleDirection = dirMaskName[rule.direction];
+    	if (!rule.directional()){
+      		ruleDirection="";
+    	}
 
 		var inspect_ID =  addToDebugTimeline(level,rule.lineNumber);
 		const locations = cellIndexes.map(i => `(${1 + i % level.width};${1 + ~~(i / level.width)})`).join(', ');
@@ -2717,9 +2717,8 @@ Rule.prototype.applyAt = function(level,tuple,check,delta) {
 		
 		var logString = `<font color="green">Rule <a onclick="jumpToLine(${rule.lineNumber});"  href="javascript:void(0);">${rule.lineNumber}</a> ${ruleDirection} applied${gapMessage}.</font>`;
 		consolePrint(logString,false,rule.lineNumber,inspect_ID);
-		
 	}
-
+	if (debugSwitch.includes('perf') && perfCounters.applied % 100 == 0) console.log(`Applied ${perfCounters.applied} rules in ${Date.now() - perfCounters.start}ms.`);		
     return result;
 };
 
@@ -2815,8 +2814,9 @@ Rule.prototype.queueCommands = function() {
 		curLevel.commandQueueSourceRules.push(this);
 
 		if (verbose_logging) {
+			const inspect_ID =  addToDebugTimeline(curLevel, this.lineNumber);
 			const logString = htmlColor('green', `Rule ${htmlJump(this.lineNumber)} triggers command ${command[0]}.`);
-			consolePrint(logString, false, this.lineNumber, null);
+			consolePrint(logString, false, this.lineNumber, inspect_ID);
 		}
 
 		if (command[0] == 'message') {
@@ -2850,17 +2850,26 @@ Rule.prototype.queueCommands = function() {
 			}
 			
 			if (command[0] === "zoomscreen" || command[0] === "flickscreen") {
-				twiddleMetaData(state, true);
+				//twiddleMetaData(state, true);
+				twiddleMetaData(state, command);
 				canvasResize();
 			}
 
 			if (command[0] === "smoothscreen") {
 				if (value !== undefined) {
-					twiddleMetaData(state, true);
+					//twiddleMetaData(state, true);
+					twiddleMetaData(state, command);
 					initSmoothCamera()
 				} else {
 					smoothscreen = false;
 				}
+				canvasResize();
+			}
+
+			if (command[0] == "color_palette") {
+				//twiddleMetaData(state, true);
+				twiddleMetaData(state, command);
+				regenSpriteImages()
 				canvasResize();
 			}
 
@@ -2872,13 +2881,15 @@ Rule.prototype.queueCommands = function() {
 					log += " ("+command[1]+")"
 				}
 				consolePrintFromRule(log,this,true);
+				canvasResize();
 			}
     	}   
   	}
 };
 
-// despite its name, this function exists to establish default values for prelude settings
+// set various prelude settings from metadata, either initially or when twiddled
 function twiddleMetadataExtras(resetAutoTick = true) {
+    if (debugSwitch.includes('meta')) console.log(`twiddleMetaDataExtras resetAutoTick=${resetAutoTick} metadata:`, state.metadata);
 	autotickinterval=state.metadata.realtime_interval ? state.metadata.realtime_interval*1000 : 0;
 	if (resetAutoTick || !state.metadata.realtime_interval)
     	autotick=0;
@@ -2886,8 +2897,13 @@ function twiddleMetadataExtras(resetAutoTick = true) {
 	tweeninterval = state.metadata.tween_length ? Math.max(state.metadata.tween_length*1000, 0) : 0;
 	repeatinterval = state.metadata.key_repeat_interval ? state.metadata.key_repeat_interval*1000 : 200; // was 150, makes for key bounce
 	animateinterval = state.metadata.animate_interval ? state.metadata.animate_interval*1000 : 250; // was 150, makes for key bounce
+
+	const colorPalette = state.metadata.color_palette;
 	state.bgcolor = state.metadata.background_color ? colorToHex(colorPalette,state.metadata.background_color) : "#000000";
 	state.fgcolor = state.metadata.text_color ? colorToHex(colorPalette,state.metadata.text_color) : "#FFFFFF";
+    state.author_color = state.metadata.author_color ? colorToHex(colorPalette, state.metadata.author_color) : state.fgcolor;
+    state.title_color = state.metadata.title_color ? colorToHex(colorPalette, state.metadata.title_color) : state.fgcolor;
+    state.keyhint_color = state.metadata.keyhint_color ? colorToHex(colorPalette, state.metadata.keyhint_color) : state.fgcolor;
 }
 
 function showTempMessage(message) {
@@ -3049,6 +3065,7 @@ function applyRules(rules, loopPoint, subroutines, startRuleGroupindex, bannedGr
 				endIndex = findEnd(ruleGroupIndex);
 				gosubTarget = -1;
 				//console.log(`gosub group:${ruleGroupIndex} line:${rules[ruleGroupIndex][0].lineNumber}`)
+				if (debugSwitch.includes('gosub')) console.log(`gosub1 group:${ruleGroupIndex} line:${rules[ruleGroupIndex][0].lineNumber} endindex:${endIndex}`, gosubStack);
 			} else {
 				ruleGroupIndex++;
 				// note special for loops and gosubs that end after the last rule
@@ -3057,12 +3074,14 @@ function applyRules(rules, loopPoint, subroutines, startRuleGroupindex, bannedGr
 						break; 
 				}		
 
-				if (ruleGroupIndex == endIndex && gosubStack.length > 0) {
+				// loop to handle stacked returns
+				while (ruleGroupIndex == endIndex && gosubStack.length > 0) {
 					if (verbose_logging)
 						consolePrint(`Return to ${htmlJump(rules[gosubStack.at(-1)][0].lineNumber)}`, true);
 					ruleGroupIndex = gosubStack.pop();
 					endIndex = findEnd(ruleGroupIndex);
 					ruleGroupIndex++;
+					if (debugSwitch.includes('gosub')) console.log(`gosub2 group:${ruleGroupIndex} line:${rules[ruleGroupIndex][0].lineNumber} endindex:${endIndex}`, gosubStack);
 				}
 			}
 		}
@@ -3086,13 +3105,13 @@ function applyRules(rules, loopPoint, subroutines, startRuleGroupindex, bannedGr
 }
 
 //if this returns!=null, need to go back and reprocess
-function resolveMovements(level, bannedGroup){
+function resolveMovements(level, bannedGroup, dontModify) {
 	var moved=true;
 
     while(moved){
         moved=false;
         for (var i=0;i<level.n_tiles;i++) {
-		  moved = repositionEntitiesAtCell(i) || moved;
+			moved = repositionEntitiesAtCell(i, dontModify) || moved;
         }
     }
     var doUndo=false;
@@ -3201,6 +3220,33 @@ function calculateRowColMasks() {
 var playerPositions;
 var playerPositionsAtTurnStart;
 
+// process inputs specific to level (code copied from testing framework)
+function processLevelInput() {
+	const input = state.levels[curLevelNo].input;
+	if (!input) return;
+	if (verbose_logging)
+		consolePrint(`Processing level input ${input}`);
+	const inputDat = input.split(',');
+	state.levels[curLevelNo].input = null;
+
+	for (const val of inputDat) {
+		if (val==="undo") {
+			DoUndo(false,true);
+		} else if (val==="restart") {
+			DoRestart();
+		} else if (val==="tick") {
+			processInput(-1);
+		} else {
+			processInput(dirNames.indexOf(val));
+		}
+		while (againing) {
+			againing=false;
+			processInput(-1);			
+		}
+	}
+
+}
+
 // acceptable input directions, used here and in inputoutput
 var dirNames = ['up', 'left', 'down', 'right', 'action', 'mouse', 'lclick', 'rclick'];  // todo: reaction, mclick
 
@@ -3218,13 +3264,17 @@ function processInput(dir,dontDoWin,dontModify,bak,coord) {
 		matches: 0,
 		replaces: 0,
 		replaced: 0,
+		applied: 0,
 		commands: 0,
 		randoms : 0,
 		groups: 0,
 		tries: 0,		
 	}
+	if (debugSwitch.includes('profile')) console.profile('INP');
 	const ret = procInp(dir, dontDoWin, dontModify, bak, coord);
+	if (debugSwitch.includes('profile')) console.profileEnd('INP');
 	perfCounters.elapsed = Date.now() - perfCounters.start;
+	if (debugSwitch.includes('perf')) console.log(perfCounters);
 	return ret;
 }
 function procInp(dir,dontDoWin,dontModify,bak,coord) {
@@ -3232,7 +3282,7 @@ function procInp(dir,dontDoWin,dontModify,bak,coord) {
 		newMovedEntities = {};
 	}
 
-	var startDir = dir;
+	//var startDir = dir;
 
 	againing = false;
 
@@ -3310,7 +3360,7 @@ function procInp(dir,dontDoWin,dontModify,bak,coord) {
         	i++;
 
 			applyRules(state.rules, state.loopPoint, state.subroutines, startRuleGroupIndex, bannedGroup);
-			var shouldUndo = resolveMovements(curLevel, bannedGroup);
+        	var shouldUndo = resolveMovements(curLevel, bannedGroup, dontModify);
 			
         	if (shouldUndo) {
         		rigidloop=true;
@@ -3461,8 +3511,8 @@ function procInp(dir,dontDoWin,dontModify,bak,coord) {
     		}
 
 	    	if (verbose_logging) { 
-	    		var r = curLevel.commandQueueSourceRules[curLevel.commandQueue.indexOf('restart')];
-	    		consolePrintFromRule('RESTART command executed, reverting to restart state.',r.lineNumber);
+	    		const r = curLevel.commandQueueSourceRules[curLevel.commandQueue.indexOf('restart')];
+	    		consolePrintFromRule('RESTART command executed, reverting to restart state.', r);
 	    		consoleCacheDump();
 			}
 			if (!dontModify){
@@ -3473,7 +3523,6 @@ function procInp(dir,dontDoWin,dontModify,bak,coord) {
 			if (!dontModify){
 	    		DoRestart(true);
 			}
-    		return true;
 		}
 		
 		if (curLevel.commandQueue.indexOf('quit')>=0 && !solving) {
@@ -3482,7 +3531,10 @@ function procInp(dir,dontDoWin,dontModify,bak,coord) {
 				consolePrintFromRule('QUIT command executed, exiting level.',r);
 				consoleCacheDump();
 			}
-			if (state.metadata.level_select !== undefined) {
+			if (state.metadata.enable_pause) {
+				goToPauseScreen(); 
+			} else if (state.metadata.level_select !== undefined) {
+				titleSelection = null;
 				gotoLevelSelectScreen();
 			} else {
 				goToTitleScreen();
@@ -3528,7 +3580,7 @@ function procInp(dir,dontDoWin,dontModify,bak,coord) {
 	    	}
 	    }
 
-		if (dontModify && curLevel.commandQueue.indexOf('win')>=0) {	
+		if (dontModify && curLevel.commandQueue.indexOf('win')>=0 || curLevel.commandQueue.indexOf('restart')>=0) {	
 	    	return true;	
 		}
 		
@@ -3602,7 +3654,8 @@ function procInp(dir,dontDoWin,dontModify,bak,coord) {
 	    			var r = curLevel.commandQueueSourceRules[curLevel.commandQueue.indexOf('checkpoint')];
 		    		consolePrintFromRule('CHECKPOINT command executed, saving current state to the restart state.',r);
 				}
-				restartTarget=level4Serialization();
+				restartTarget=backupLevel();		// fix for twiddle issues #67 #73 and reopen
+				//restartTarget=level4Serialization();
 				hasUsedCheckpoint=true;
 				var backupStr = JSON.stringify(restartTarget);
 				storage_set(document.URL+'_checkpoint',backupStr);
@@ -3798,7 +3851,7 @@ function nextLevel() {
 	againing=false;
 	messagetext="";
 	statusText = "";
-	if (state && state.levels && (curLevelNo>state.levels.length) ){
+	if (state && state.levels && (curLevelNo>state.levels.length-1) ){
 		curLevelNo=state.levels.length-1;
 	}
   
@@ -3838,11 +3891,11 @@ function nextLevel() {
 
 		if (curLevelNo<(state.levels.length-1)) {
 			var skip = false;
-			var curSection = state.levels[Number(curLevelNo)].section;
-			var nextSection = state.levels[Number(curLevelNo)+1].section;
+			var curSection = state.levels[curLevelNo].section;
+			var nextSection = state.levels[curLevelNo+1].section;
 			if(nextSection != curSection) {
-				setSectionSolved(state.levels[Number(curLevelNo)].section);
-				
+				setSectionSolved(state.levels[curLevelNo].section);
+
 				if(solvedSections.length == state.sections.length && state.winSection != undefined) {
 					curLevelNo = state.winSection.firstLevel - 1; // it's gonna be increased to match few lines below
 				} else if (nextSection == "__WIN__") {
@@ -3862,7 +3915,7 @@ function nextLevel() {
 			}
 		} else {
 			if (solvedSections.length == state.sections.length) {
-				if (state.metadata["level_select"] === undefined) {
+				if (!state.metadata.level_select) {
 					// solved all
 					try {
 						storage_remove(document.URL);
@@ -3879,8 +3932,8 @@ function nextLevel() {
 
 				tryPlayEndGameSound();
 			} else {
-				if (state.levels[Number(curLevelNo)].section != null) {
-					setSectionSolved(state.levels[Number(curLevelNo)].section);
+				if (state.levels[curLevelNo].section != null) {
+					setSectionSolved(state.levels[curLevelNo].section);
 				}
 				gotoLevelSelectScreen();
 			}
@@ -3891,6 +3944,7 @@ function nextLevel() {
 	updateLocalStorage();
 	resetFlickDat();
 	canvasResize();	
+	processLevelInput(); 
 }
 
 function loadLevelFromStateOrTarget() {
@@ -3902,7 +3956,7 @@ function loadLevelFromStateOrTarget() {
 }
 
 function goToTitleScreen(){
-	if (debugSwitch.includes('load')) console.log(`gotoTitleScreen()`);
+	if (debugSwitch.includes('load')) console.log(`gotoTitleScreen() curlevelTarget=`, curlevelTarget, ` restartTarget=`, restartTarget);
     againing=false;
 	messagetext="";
 	statusText = "";
@@ -3932,12 +3986,13 @@ function resetFlickDat() {
 function updateLocalStorage() {
 	if (linkStack.length > 0)
 		return;
-	if (debugSwitch.includes('menu')) console.log(`updateLocalStorage`, curlevelTarget);
+	if (debugSwitch.includes('menu')) console.log(`updateLocalStorage`, 'curlevelTarget=', curlevelTarget, 'restartTarget=', restartTarget, 'curLevelNo=', curLevelNo);
 	try {
 		
 		storage_set(document.URL,curLevelNo);
 		if (curlevelTarget!==null){
-			restartTarget=level4Serialization();
+			restartTarget=backupLevel();		// fix for twiddle issues #67 #73 and reopen
+			//restartTarget=level4Serialization();
 			var backupStr = JSON.stringify(restartTarget);
 			storage_set(document.URL+'_checkpoint',backupStr);
 		} else {
@@ -4004,6 +4059,7 @@ var cameraPosition = {
 };
 
 function initSmoothCamera() {
+    if (debugSwitch.includes('meta')) console.log(`initSmoothCamera metadata:`, state.metadata);
     if (state===undefined || state.metadata.smoothscreen===undefined) {
         return;
     }

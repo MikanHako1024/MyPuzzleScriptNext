@@ -129,7 +129,8 @@ temp2;blue;
         Since the entire range of Unicode characters is available for this purpose, this option is deprecated.
       </dd>
 
-			<dt>color_palette mastersystem</dt>
+			<dt>color_palette mastersystem<img src="../images/psnext.png" alt="PuzzleScript Next" height="16"></dt>
+
 			<dd>By default, when you use colour names, they are pulled from a variation of <a href="http://androidarts.com/palette/16pal.htm">Arne</a>'s 16-Colour palette.  However, there are other palettes to choose from:
 			<p>
         <ul>
@@ -148,8 +149,15 @@ temp2;blue;
         <li>13 - c64 </li>
         <li>14 - whitingjp </li>
         </ul>
-        <p>
-        (you can also refer to them by their numerical index)
+        <p>You can also refer to them by their numerical index.
+          For example, to use the Game Boy palette, you can use either "gameboycolour" or "2".</p>
+          <p>Having selected a palette, you can modify individual colours by specifying a colour name and a hex code to set it, as shown here.</p>
+<pre><code>color_palette gameboycolour
+color_palette 2
+color_palette amstrad lightgreen #6F8E44 lightblue #8EA7A7
+</code></pre>
+        <p>Note that the palette can be changed at runtime via <b>runtime_metadata_twiddling</b>, for some very eye-catching effects!</p>
+
 			</dd>
 
       <dt>continue_is_level_select <img src="../images/psplus.png" title="PuzzleScript Plus" height="16"></dt>
@@ -215,6 +223,20 @@ Rule Assembly : (4 rules)
 			</dd>
       <p>You can also get this output in the editor by clicking on the <img src="../images/birdy.gif" height="24" width="24"> button.</p>
 
+			<dt>enable_pause<img src="../images/psnext.png" alt="PuzzleScript Next" height="16"></dt>
+			<dd>
+      <p>When the player pauses the game by pressing the <b>Escape</b> key, a pause menu is shown. 
+        The player can then choose whether to resume or restart the level, select a different level or return to the title menu.  </p>
+        <p>It is <u>strongly</u> recommended to enable this option for games that have one or a few long levels, 
+          so that the player is not forced to replay from the start.</p>
+			</dd>
+
+			<dt>export_options notitle,nofooter,nopadding<img src="../images/psnext.png" alt="PuzzleScript Next" height="16"></dt>
+      <dd>These options allow you to remove the title, footer, and padding from an exported game. 
+        This allows you to embed the game in a webpage where you want to control the layout yourself.
+        Other options may be added as the need arises.
+      </dd>
+
 			<dt>flickscreen WxH</dt>
 			<dd>
 				Setting flickscreen divides each level into WxH grids, and zooms the camera in so that the player can only see one at a time - the camera does not follow the player around on a move-to-move basis, but if the player moves from one part of this grid to another, the camera <em>flicks</em> to the new position.  See <a href="../editor.html?hack=6880313">Legend of Zokoban</a> for a cute example.
@@ -235,7 +257,7 @@ Rule Assembly : (4 rules)
 
 			<dt>key_repeat_interval 0.1</dt> 
 			<dd>
-			When you hold down a key, how long is the delay between repeated presses getting sent to the game (in seconds)?  The default value is 0.15.
+			When you hold down a key, how long is the delay between repeated presses getting sent to the game (in seconds)?  The default value is 0.20.
 			</dd>
 
       <dt>level_select <img src="../images/psplus.png" title="PuzzleScript Plus" height="16"></dt>
@@ -261,10 +283,24 @@ Rule Assembly : (4 rules)
       If you set this to 3, then section 1, 2, and 3 will be available at the start.   
       If you solve section 2, then only section 4 will unlock. (So there will only ever be three "unsolved" levels at most.) </dd>
 
+			<dt>load_images<img src="../images/psnext.png" alt="PuzzleScript Next" height="16"></dt>
+      <dd>Loads a spritesheet image from the specified URL and makes it available to draw into a canvas object.</dd>
+      <pre><code>// load the spritesheet for objects in the game
+load_images my_sprites=https://[...]/sprites.png
+========
+OBJECTS
+========
+Player canvas:
+{"imageSmoothingEnabled": false}  // improves sprite sharpness
+{"drawImage":["my_sprites",   0,   0, 64, 64, 0, 0, 1, 1]}</code></pre>
+
       <dt>local_radius <i>radius</i> <img src="../images/psplus.png" title="PuzzleScript Plus" height="16"></dt>
-      <dd>If you set the local_radius flag to a whole number, then the game will only check rules that are in that amount of tiles (a square radius) around the player (or one of the players if you have multiple players in the level). If you still want to have rules to be checked anywhere on the level, preface them with the <b>global</b> keyword like this: 
+      <dd>If you set the local_radius flag to a whole number, then the game will only check rules that are in that amount of tiles (a square radius) around the player 
+        (or one of the players if you have multiple players in the level). 
+        If you still want to have rules to be checked anywhere on the level, preface them with the <b>global</b> keyword like this: 
       <pre><code>(Rows of global crates can push each other, even outside of the player radius)
-  global [> GCrate | GCrate] -> [> GCrate | > GCrate ]</code></pre>
+global [> GCrate | GCrate] -> [> GCrate | > GCrate ]</code></pre>
+
         You generally don't need to use this unless you have a really big level, a ton of rules, and your game would otherwise run slowly.</dd>
 
       <dt>message_text_align right <img src="../images/psplus.png" title="PuzzleScript Plus" height="16"></dt>

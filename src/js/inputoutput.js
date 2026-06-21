@@ -957,12 +957,15 @@ function onMouseWheel(event) {
 
 	if (!mouseInCanvas || event.ctrlKey) {return;}
 
-	normalizedDelta = Math.sign(event.deltaY);
-
-	if (titleScreen && titleMode == 2 && (IsMouseGameInputEnabled())) {
-		levelSelectScroll(normalizedDelta);
-
-		redraw();
+	const normalizedDelta = Math.sign(event.deltaY);
+	if (titleScreen && IsMouseGameInputEnabled()) {
+		if(titleMode == 1) {
+			generateTitleScreen(-1, normalizedDelta);
+		} else if(titleMode == 2) {
+			generateLevelSelectScreen(-1, normalizedDelta);
+		} else if (titleMode == 3) {
+			generatePauseScreen(-1, normalizedDelta);
+		}
 		prevent(event)
 	}
 	if (levelEditorOpened) {
@@ -970,12 +973,6 @@ function onMouseWheel(event) {
 		redraw();
 		prevent(event)
 	}
-}
-
-function levelSelectScroll(direction) {
-	levelSelectScrollPos = clamp(levelSelectScrollPos + direction, 0, Math.max(state.sections.length - amountOfLevelsOnScreen, 0));
-	titleSelection = clamp(titleSelection + direction, 0, state.sections.length - 1);
-	generateLevelSelectScreen();
 }
 
 function clamp(number, min, max) {
@@ -1215,7 +1212,7 @@ function checkKey(e,justPressed) {
         		stopSolving();
         		break;
         	}
-			if (!titleScreen) {
+			if (!titleScreen && state.metadata.enable_pause) {
 				goToPauseScreen(); 
 				canvasResize();
 			} else if (!titleScreen || titleMode > 1) {
@@ -1224,7 +1221,8 @@ function checkKey(e,justPressed) {
 					titleSelection = 0;
 					
 					timer = 0;
-					if(titleScreen === false && state.metadata["level_select"] !== undefined) {
+					if(!titleScreen && state.metadata.level_select) {
+						titleSelection = null;
 						gotoLevelSelectScreen();
 					} else {
 						goToTitleScreen();

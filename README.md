@@ -14,17 +14,67 @@ PuzzleScript Next is a combination of the work of many authors:
 * the vector feature created by [hfmanson](https://github.com/hfmanson/PuzzleScriptNext)
 * and ongoing development work inspired by its many users (like you).
 
-## New Features and Fixes
-The latest version is Release v-24l06. 
-The changes to the rendering and support for loading images from URL should be considered as __alpha__ release.
-Please test and notify any issues.
+Due to unfriendly behaviour by moderators, PuzzleScript Next can no longer be released or supported on Discord thinky-puzzle-games.
+Feel free to:
+* raise an issue on [GitHub(https://github.com/david-pfx/PuzzleScriptNext/issues)]
+* ask a question on the [PuzzleScript forum(https://groups.google.com/g/puzzlescript)]
+* PM me on Discord (@Davidus of Polyomino)
+* email me directly (david@polyomino.com).
 
-Recent fixes/updates:
+## New Features and Fixes
+The latest version is Release v-26c02. 
+This release updates `stable`.
+
+Previous fixes/updates:
+* Level restored on startup triggers a crash #183
+* Fix: ESC+replay does not restore state cleanly #181
+* Fix: Objects misplaced after Restart #180
+* Fix: mouse support broken on dev-release #179
+* Testing framework enable compile error check for non-PS
+* Custom palette #128
+* Set palette at runtime via metadata twiddling #95
+* Updated documentation (`Prelude` and `Runtime Metadata Twiddling`)
+* Updated version of `colour_chart` to show these features.
+* New: Fixed regression on `verbose_logging`.
+* New: Palette changes in `netgame`.
+* Idents targeted by `export_options` must not be quoted in order to survive minification
+* Fix: After level select, scroll, select, the Run link does not reset the game properly #177
+* Fix: Adding smoothscreen to an existing program in the editor triggers a crash on Build #176
+* Documentation for `load_images` #129. New feature previously included for testing but not documented until now.
+* New games imported from PS and added to gallery.
+* Fix Link breaks after exit and continue #164
+* Fix ESC menu not always offered #174
+* Update docs for enable_pause
+* Fix Sprite expansion errors visible in Hebird #170
+* Fix [ OBJ:perpendicular ] TypeError crash #171
+* Fix: quit goes to first level but should be current #165
+* New prelude settings 'enable_pause', 'export_options' (breaking change: see docs)
+* Fix: Fix UX annoyance with the debug hover #168
+* Tweaks for docs: Collision layers, message, tags
+* Fixed Tween behaviour inconsistency #162
+* Closed with updated docs: Dev version tweening is broken for left and up #163
+* Improved startup so initial load gets compile but no clear #139
+* Fixed doc for key_repeat_interval #161
+* Fixed export filename issues #138
+* Compiled all the gallery programs and fixed a few minor bugs
+* Fixed: A loop for late rules AND a subroutine stops the main loop from working #153 (inherited from PS)
+* Fixed: ENIGMASH verbose_logging maxes out CPU #150 (see issue for details) (inherited from PS)
+* Fixed: The "no" rule not expanded when used with a tag which is also a rule prefix #145
+* Fixed twiddle background colour (outside clip zone)
+* Fixed debug log print-out for startloop, endloop, no gap (inherited from PS)
+* Fix issues with error checking of numeric settings
+* Fix smoothscreen multi-undo does not track the player #157
+* Fix smoothscreen and canvas sprites oddity #158
+* Fix background colour not applied to header/footer #159
+* Reset focus after click verbose logging
+* Implement text colours for non custom font #146
+* Fix clip region for smoothscreen #148
+* Fix gosub stacked returns #147
+* Fix save/restore twiddle on checkpoint #73
+* Fix default colours for twiddling (exposed by #146)
 * Pause (Esc) during again sequence does not resume correctly #140
 * Level select Enter on last line scrolls and selects the next line down #142
 * Bug when undoing a restart into an again loop (PS) #141
-
-Older fixes/updates:
 * Fixed: Use of zoomscreen breaks status_line (#124).
 * Fixed: TypeError: Cannot read properties of undefined (reading 'vector')  (#133).
 * Fixed: documentation for mouse input.

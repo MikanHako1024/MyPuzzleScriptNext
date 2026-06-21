@@ -105,14 +105,14 @@ function createSvgSprite(name, vector) {
 }
 
 // draw the pixels of the sprite grid data into the context at a cell position, 
-function renderSprite(context, spritegrid, colors, padding, x, y, size, height) {
+function renderSprite(context, spritegrid, colors, padding, cellx, celly, size, height) {
     colors ||= ['#00000000', state.fgcolor];
 
     const rc = { 
-        x: x * cellwidth, // global
-        y: y * cellheight, 
-        w: size || spritegrid[0].length,
-        h: height || size || spritegrid.length,
+        x: cellx * cellwidth, // global
+        y: celly * cellheight, 
+        w: size || spritegrid[0].length * pixelSize,
+        h: height || size || spritegrid.length * pixelSize,
     };
 
     context.clearRect(rc.x, rc.y, rc.w, rc.h);
@@ -144,32 +144,38 @@ function drawTextWithFont(ctx, text, color, x, y, height) {
 
 }
 
-// create a single text sheet canvas containing all the character glyphs
-var textsheetCanvas = null;
+let textsheetCanvas = {};
 
 function regenText() {
-    textsheetCanvas ||= document.createElement('canvas');
-
     var textsheetSize = Math.ceil(Math.sqrt(fontKeys.length));
+    
+    // create a single text sheet canvas for each colour containing all the character glyphs
+    ['#00000000', state.fgcolor, state.text_color, state.author_color, state.keyhint_color, state.background_color, state.title_color].forEach(color => {
+        if (color && !textsheetCanvas[color])
+            textsheetCanvas[color] = document.createElement('canvas');
+    });
+        
+    for (const color in textsheetCanvas) {
+        const canvas = textsheetCanvas[color];
+        canvas.width = textsheetSize * cellwidth;
+        canvas.height = textsheetSize * cellheight;
+        
+        const ctx = textsheetCanvas[color].getContext('2d');
+        ctx.clearRect(0, 0, cellwidth, cellheight);
 
-    textsheetCanvas.width = textsheetSize * cellwidth;
-    textsheetCanvas.height = textsheetSize * cellheight * 2;
+        for (var n = 0; n < fontKeys.length; n++) {
+            var key = fontKeys[n];
+            if (font.hasOwnProperty(key)) {
+                fontstr = font[key].split('\n').map(a=>a.trim().split('').map(t=>parseInt(t)));
+                fontstr.shift();
 
-    var textsheetContext = textsheetCanvas.getContext('2d');
-
-    for (var n = 0; n < fontKeys.length; n++) {
-        var key = fontKeys[n];
-        if (font.hasOwnProperty(key)) {
-            fontstr = font[key].split('\n').map(a=>a.trim().split('').map(t=>parseInt(t)));
-            fontstr.shift();
-
-            var textX = (n % textsheetSize)|0;
-            var textY = (n / textsheetSize)|0;
-
-            renderSprite(textsheetContext, fontstr, undefined, 1, textX, textY);
-            renderSprite(textsheetContext, fontstr, ['#00000000', '#000000'], 1, textX, textY + textsheetSize);
+                var textX = (n % textsheetSize)|0;
+                var textY = (n / textsheetSize)|0;
+                renderSprite(ctx, fontstr, [ '#00000000', color ], 1, textX, textY);
+            }
         }
     }
+    if (debugSwitch.includes('redraw')) console.log(`regenText sz=${textsheetSize} fk=${fontKeys.length} textsheetCanvas=`, textsheetCanvas);
 }
 
 var editor_s_grille=[[0,1,1,1,0],[1,0,0,0,0],[0,1,1,1,0],[0,0,0,0,1],[0,1,1,1,0]];
@@ -191,14 +197,16 @@ function regenSpriteImages() {
 	} 
     
     if (IDE===true) {
-        textImages['editor_s'] = createSprite('chars', editor_s_grille, undefined, 5);  //@@?? w,h
+        textImages['editor_s'] = createSprite('chars', editor_s_grille, undefined, 5);  //?? w,h
     }
     
     if (state.levels.length===0) {
         return;
     }
     spriteImages = [];
-    
+
+    // create sprites here because palette may have changed
+    createObjectSprites();
     objectSprites.forEach((s,i) => {
         if (s) {
             spriteImages[i] =
@@ -210,6 +218,23 @@ function regenSpriteImages() {
 
     if (canOpenEditor) {
     	generateGlyphImages();
+    }
+}
+
+// this code used to be in the initial state setup, but needed here for palette changes
+function createObjectSprites() {
+    objectSprites = [];
+    for (const n in state.objects) {
+        if (state.objects.hasOwnProperty(n)) {
+            const object = state.objects[n];
+			objectSprites[object.id] = {
+                dat: object.spritematrix,
+                colors: object.colors.map(c => colorToHex(state.metadata.color_palette, c)), // in case we twiddled colours
+				text: object.spritetext,
+                vector: object.vector,
+				scale: object.scale,
+            };
+        }
     }
 }
 
@@ -275,17 +300,27 @@ function generateGlyphImages() {
 	}
 
 	if (IDE) {
-		//make highlight thingy
+		//make highlight thingy in grid
 		glyphHighlight = makeSpriteCanvas("highlight");
 		var spritectx = glyphHighlight.getContext('2d');
-		spritectx.fillStyle = '#FFFFFF';
+		spritectx.strokeStyle = 'orange';
+		spritectx.lineWidth = 3;
+        spritectx.strokeRect(0, 0, cellwidth, cellheight);
 
-        const hlwid = 3;
-        spritectx.fillRect(0, 0, cellwidth, hlwid);
-        spritectx.fillRect(0, 0, hlwid, cellheight);
-
-        spritectx.fillRect(0, cellheight - hlwid, cellwidth, hlwid);
-        spritectx.fillRect(cellwidth - hlwid, 0, hlwid, cellheight);
+        //---------------------------------------------------------------------------
+        // generate a hover highlight the size of the largest object in the level
+        // but this needs to handle negative sprite offsets
+        // const size = Object.values(state.objects).reduce((acc, obj) => {
+        //     return {
+        //         x: Math.min(acc.x, obj.spriteoffset.x),
+        //         y: Math.min(acc.y, obj.spriteoffset.y),
+        //         width: Math.max(acc.width, obj.spriteoffset.x + obj.spritematrix[0].length),
+        //         height: Math.max(acc.height, obj.spriteoffset.y + obj.spritematrix.length), 
+        //     };
+        // }, { x: 0, y: 0, width: 0, height: 0 });
+        // console.log(`size: ${JSON.stringify(size)}`);
+        // spritectx.strokeRect(0, 0, size.width * pixelSize, size.height * pixelSize);
+        //---------------------------------------------------------------------------
 
 		glyphPrintButton = textImages['editor_s'];
 
@@ -325,15 +360,10 @@ function generateGlyphImages() {
 		//make highlight thingy
 		glyphMouseOver = makeSpriteCanvas("glyphMouseOver");
 		var spritectx = glyphMouseOver.getContext('2d');
-		spritectx.fillStyle = 'yellow';
-		const mowid = 3;  // was 2
-
-        spritectx.fillRect(0, 0, cellwidth, mowid);
-        spritectx.fillRect(0, 0, mowid, cellheight);
-
-        spritectx.fillRect(0, cellheight - mowid, cellwidth, mowid);
-        spritectx.fillRect(cellwidth - mowid, 0, mowid, cellheight);
-
+        spritectx.lineWidth = 3;
+        spritectx.strokeStyle = 'yellow';
+        spritectx.strokeRect(0, 0, cellwidth, cellheight);
+        
         //make movement glyphs
 
         const coords = [
@@ -407,7 +437,7 @@ function redraw() {
     if (cellwidth===0||cellheight===0) {
         return;
     }
-    if (debugSwitch.includes('perf')) console.log(`Redraw: ${JSON.stringify(perfCounters)}`);
+    if (debugSwitch.includes('redraw')) console.log(`Redraw: ${JSON.stringify(perfCounters)}`);
 
     if (textMode)
         redrawTextMode();
@@ -426,7 +456,7 @@ function redrawTextMode() {
         const textsheetSize = Math.ceil(Math.sqrt(fontKeys.length));
         for (var i = 0; i < TITLE_WIDTH; i++) {
             for (var j = 0; j < TITLE_HEIGHT; j++) {
-                ctx.fillStyle = lineColor(j);
+                const color = lineColor(j);
                 var ch = titleImage[j].charAt(i);
                 if (ch in font) {
                     var index = fontIndex[ch];
@@ -434,7 +464,7 @@ function redrawTextMode() {
                     var textY = (index / textsheetSize)|0;
                     ctx.imageSmoothingEnabled = false;
                     ctx.drawImage(
-                        textsheetCanvas,
+                        textsheetCanvas[color],
                         textX * textcellwidth,
                         textY * textcellheight,
                         textcellwidth, textcellheight,
@@ -469,6 +499,7 @@ function redrawCellGrid(curlevel) {
         curlevel.movements = diffToVisualize.movements;
         curlevel.rigidMovementAppliedMask = diffToVisualize.rigidMovementAppliedMask;
     }
+    ctx.restore();
     ctx.fillStyle = state.bgcolor;
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
@@ -610,14 +641,15 @@ function redrawCellGrid(curlevel) {
         }
     }
 
-    const doMoveTweens = state.metadata.tween_length && currentMovedEntities;
+    const doMoveTweens = Object.keys(currentMovedEntities).length > 0;
     const doAfxAnimate = Object.keys(seedsToAnimate).length > 0;
     const moveTween = doMoveTweens ? calcTweening() : 0;
     const animTween = doAfxAnimate ? 1 - clamp(tweentimer/animateinterval, 0, 1) : 0;  // range 1 => 0
-
+    
     // global flags to force redraw, defer againing
     isAnimating = state.metadata.smoothscreen || doMoveTweens || doAfxAnimate;
     isTweening = moveTween > 0 || animTween > 0;
+    if (isAnimating && debugSwitch.includes('tween')) console.log(`tween moveTween=${moveTween} animTween=${animTween} seedsToAnimate=`, seedsToAnimate, `currentMovedEntities=`, currentMovedEntities);
 
     const render = new RenderOrder(minMaxIJ);
     if (!levelEditorOpened && !showLayers)
@@ -655,7 +687,7 @@ function redrawCellGrid(curlevel) {
             seedsToAnimate = {};
 
         // Decision required whether to follow P:S pivot (top left)
-        const spriteScaler = state.metadata.sprite_size ? { //@@?? w,h does this even work?
+        const spriteScaler = state.metadata.sprite_size ? { //?? w,h does this even work?
             scale: state.cell_height || state.sprite_size, 
             pivotx: 0.0, // todo
             pivoty: 1.0 
@@ -801,7 +833,7 @@ function redrawCellGrid(curlevel) {
 
     // calculate and return tween-adjusted values
     function getTweening(tween, drawpos, object, posIndex) {
-        const dir = currentMovedEntities && currentMovedEntities["p"+posIndex+"-l"+object.layer];
+        const dir = currentMovedEntities["p"+posIndex+"-l"+object.layer];
         if (dir == 16)  // Action button
             return [ drawpos.x, drawpos.y, 1-tween ];
         if (dir >= 0) { // Cardinal directions
@@ -895,7 +927,7 @@ function drawSmoothScreenDebug(ctx) {
             cellwidth / 4,
             0, 2* Math.PI
         );
-        ctx.fill()
+        ctx.fill();
     }
 
     var targetOffsetX = cameraPositionTarget.x - cameraPosition.x;
@@ -909,7 +941,7 @@ function drawSmoothScreenDebug(ctx) {
         cellwidth / 8,
         0, 2* Math.PI
     );
-    ctx.fill()
+    ctx.fill();
 
     ctx.strokeStyle = '#0000ff';
     ctx.lineWidth = cellwidth / 16;
@@ -928,7 +960,7 @@ function drawSmoothScreenDebug(ctx) {
         cellwidth / 4,
         0, 2* Math.PI
     );
-    ctx.fill()
+    ctx.fill();
 
     ctx.strokeStyle = '#ff0000';
     ctx.lineWidth = cellwidth / 8;
@@ -939,13 +971,14 @@ function drawSmoothScreenDebug(ctx) {
         boundarySize.height * cellheight
     );
 
-    ctx.restore()
+    ctx.restore();
 }
 
 function setClip(tween) {
     // could probably just use screen height/width?
-    const cliph = (flickscreen || zoomscreen) ? screenheight : (tween.iter[3] - tween.iter[1]);
-    const clipw = tween.iter[2] - tween.iter[0];
+    if (debugSwitch.includes('redraw')) console.log(`clip zfs=${zoomscreen},${flickscreen},${smoothscreen} screen=${screenwidth}x${screenheight} iter=`, tween.iter);
+    const clipw = (flickscreen || zoomscreen || smoothscreen) ? screenwidth : (tween.iter[2] - tween.iter[0]);
+    const cliph = (flickscreen || zoomscreen || smoothscreen) ? screenheight : (tween.iter[3] - tween.iter[1]);
     const rc = {
         x: xoffset,
         y: yoffset,
@@ -1086,6 +1119,7 @@ function canvasResize(level) {
         screenwidth=state.metadata.zoomscreen[0];
         screenheight=state.metadata.zoomscreen[1];
     } else if (smoothscreen) {
+        initSmoothCamera();         // need this in case smoothscreen is now enabled
         screenwidth=state.metadata.smoothscreen.screenSize.width;
         screenheight=state.metadata.smoothscreen.screenSize.height;
     }
